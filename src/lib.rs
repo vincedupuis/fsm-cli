@@ -16,6 +16,8 @@ pub mod geometry;
 mod languages;
 pub mod merge;
 pub mod model;
+#[cfg(test)]
+mod parity;
 pub mod paths;
 pub mod render;
 mod sha256;

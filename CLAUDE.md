@@ -10,8 +10,9 @@ cargo build --release       # target/release/fsm
 cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown
                             # target/wasm32-unknown-unknown/wasm/fsm_cli.wasm
 cargo test                  # unit tests (grammar, front matter, case filters, globs, paths, the library's
-                            # requests, arguments, reading the layout, diff, the writer, merge) and tests/cli.rs (the program
-                            # as a process)
+                            # requests, arguments, reading the layout, diff, the writer, merge), src/parity.rs (validation
+                            # and the writer against the editors' fixtures in tests/fixtures) and tests/cli.rs (the
+                            # program as a process)
 cargo clippy --all-targets
 cargo fmt                   # rustfmt.toml: 120 columns
 cargo run -- write "../fsm-editor-vscode/examples/*.fsm" -t sml -o <dir>
@@ -40,7 +41,8 @@ The library (`src/`) holds the pipeline; the program (`src/cli/`) holds the comm
 | `diff.rs` | `fsm diff`: pairing elements by xmi:id (`pair`), their model and drawing properties as named values (`*_properties`, `*_layout`), the statuses, labels and sentences, the text and JSON output. `merge` reuses the properties, the labels (`Namer`) and the value display. |
 | `merge.rs` | `fsm merge`: elements matched by id (k-th occurrence) across base, ours and theirs; deletions grouped under their topmost element and checked against the other side; properties merged three-way (lists as sets), the layout on exact values with conflicts judged at 0.1 px, positions relative to the owner and bend points to the source, then made absolute again (bend points that one side only moved on the canvas taken as they are, as `diff` counts them changed only when they moved both relative to the source and on the canvas); containment cycles, the cascade of what lost its container or ends; the result written, read back and validated; the report (text, JSON). |
 | `expressions.rs` | The text grammar. |
-| `validation.rs` | |
+| `validation.rs` | The editors' validation rules and messages (`src/validation.ts`). |
+| `parity.rs` | Tests only: the validator and the writer against `tests/fixtures`, the editors' parity fixtures (`node parity/fixtures.mjs` in the umbrella repo writes them). |
 | `codemodel.rs` | `to_code_model()`. Serialized with serde in camelCase. |
 | `tables.rs` | The nested transition tables (`tables` in the code model). |
 | `render.rs`, `languages.rs` | Front matter, the MiniJinja environment and its filters and functions, the refusal of `.hbs` templates. |
@@ -48,7 +50,7 @@ The library (`src/`) holds the pipeline; the program (`src/cli/`) holds the comm
 
 ## Rules
 
-- **The editors:** reading `.fsm` files, the text grammar and validation (rules and messages) follow the editions of FSM Editor, whose reference is fsm-editor-vscode (`src/xmi.ts`, `media/expressions.js`, `src/validation.ts`): a change there needs the same change here, and the reverse.
+- **The editors:** reading `.fsm` files, the text grammar and validation (rules and messages) follow the editions of FSM Editor, whose reference is fsm-editor-vscode (`src/xmi.ts`, `media/expressions.js`, `src/validation.ts`): a change there needs the same change here, and the reverse. `tests/fixtures` holds the editions' parity fixtures, made from the reference by the umbrella repo's `node parity/fixtures.mjs`: `src/parity.rs` checks the validator's issues (element, severity, message, in order) and the writer's round trips against them. Don't edit them by hand.
 - **The code model** is documented in fsm-editor-vscode's `docs/CODEGEN.md` ("Code model reference"); keep it in step with `codemodel.rs` and `tables.rs`.
 - **Native and WebAssembly alike:** the library must give the program's files and messages, byte for byte (`tests/cli.rs` checks one case). What `lib.rs::run` calls must not touch the file system or the process: it reads through `generate`'s callback and gets the current folder from `paths::set_cwd` (`paths::expand_glob` is the program's only).
 - **Reading the layout** must give the model `fromXmi` gives, layout included: compare the two on many files (models dumped as JSON from both) after changing `xmi.rs` or `geometry.rs`.
