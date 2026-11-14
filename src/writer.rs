@@ -5,11 +5,11 @@
 //! JavaScript's arithmetic and its number formatting. The same applies to the editors' copies of that writer
 //! (`Xmi.cs`, `Xmi.kt`).
 //!
-//! One save settles a file: reading what `to_xmi` wrote and writing it again gives the same text. So the bounds are
-//! rounded to 0.1 px before anything is derived from them, a size of 0 is written as the default size reading gives
-//! it, region sizes are written as the region shapes hold them, a label's middle is measured on the written waypoints,
-//! each element is written once and the diagram follows document order; with ids used twice, what reading gives is
-//! written again until the text no longer changes.
+//! One save settles a file whose ids are unique: reading what `to_xmi` wrote and writing it again gives the same text.
+//! So the bounds are rounded to 0.1 px before anything is derived from them, a size of 0 is written as the default
+//! size reading gives it, region sizes are written as the region shapes hold them, a label's middle is measured on the
+//! written waypoints, each element is written once and the diagram follows document order. Ids used twice (which the
+//! validator reports) can still change a file on its next save, but it doesn't grow.
 
 use std::collections::{HashMap, HashSet};
 
@@ -274,41 +274,11 @@ fn kind_str(k: TransitionKind) -> &'static str {
     }
 }
 
-/// Writes the machine as the editors save it. Reading it back and writing it again gives the same text. When ids are
-/// used twice (files edited by hand), reading gives a shape, bend points or a color to the last element with that id
-/// and default places to the others, so what reading gives is written again, until the text no longer changes.
+/// Writes the machine as the editors save it. When its ids are unique (the validator reports those that aren't),
+/// reading it back and writing it again gives the same text. With ids used twice (files edited by hand), reading gives a
+/// shape, bend points or a color to the last element with that id and default places to the others, so such a file can
+/// still change on the next save; it doesn't grow, as each element is written once.
 pub fn to_xmi(model: &FsmModel) -> Result<String, String> {
-    let mut text = write_model(model)?;
-    if !shares_ids(model) {
-        return Ok(text);
-    }
-    for _ in 0..10 {
-        let again = write_model(&crate::xmi::from_xmi(&text)?)?;
-        if again == text {
-            break;
-        }
-        text = again;
-    }
-    Ok(text)
-}
-
-/// Whether vertices, transitions and regions use some id more than once.
-fn shares_ids(model: &FsmModel) -> bool {
-    let mut ids = HashSet::new();
-    let mut n = 0;
-    let all = model
-        .regions
-        .iter()
-        .map(|r| &r.id)
-        .chain(model.vertices.iter().flat_map(|v| std::iter::once(&v.id).chain(v.regions.iter().map(|r| &r.id))));
-    for id in all.chain(model.transitions.iter().map(|t| &t.id)) {
-        ids.insert(id);
-        n += 1;
-    }
-    ids.len() != n
-}
-
-fn write_model(model: &FsmModel) -> Result<String, String> {
     let m = prepared(model);
     Writer::new(&m).document()
 }
@@ -1142,8 +1112,7 @@ lines &amp; &quot;quotes&quot;</body>
     #[test]
     fn one_save_settles() {
         // Edited by hand: regions without shapes (equal parts of 127 px in three), a transition in an outer region,
-        // coordinates off the 0.1 px grid, an infinite width, a label far from the origin, and two states sharing an
-        // id, each with an entry point.
+        // coordinates off the 0.1 px grid, an infinite width and a label far from the origin.
         let text = r#"<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20161101" xmlns:umldi="http://www.omg.org/spec/UML/20161101/UMLDI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC">
   <uml:StateMachine xmi:id="sm" name="Settle">
     <region xmi:id="r">
@@ -1151,11 +1120,8 @@ lines &amp; &quot;quotes&quot;</body>
       <subvertex xmi:type="uml:State" xmi:id="C"><region xmi:id="c1"><subvertex xmi:type="uml:State" xmi:id="In"/></region></subvertex>
       <subvertex xmi:type="uml:State" xmi:id="Near"/>
       <subvertex xmi:type="uml:State" xmi:id="Far"/>
-      <subvertex xmi:type="uml:State" xmi:id="s1"><connectionPoint xmi:type="uml:Pseudostate" xmi:id="ep" kind="entryPoint"/></subvertex>
-      <subvertex xmi:type="uml:State" xmi:id="s1"><connectionPoint xmi:type="uml:Pseudostate" xmi:id="ep" kind="entryPoint"/></subvertex>
       <transition xmi:id="t1" source="Near" target="Far"/>
       <transition xmi:id="t2" source="In" target="In"/>
-      <transition xmi:id="t3" source="ep" target="s1"/>
     </region>
   </uml:StateMachine>
   <umldi:UMLStateMachineDiagram xmi:id="d">
@@ -1169,7 +1135,27 @@ lines &amp; &quot;quotes&quot;</body>
 </xmi:XMI>"#;
         let saved = to_xmi(&from_xmi(text).unwrap()).unwrap();
         assert_eq!(to_xmi(&from_xmi(&saved).unwrap()).unwrap(), saved);
-        assert_eq!(saved.matches(r#"xmi:id="ep""#).count(), 2, "each entry point written once");
+    }
+
+    #[test]
+    fn writes_elements_sharing_an_id_once() {
+        // Two states sharing an id, each with an entry point: the file holds each element once, save after save (it
+        // may still change on the next save: such files don't settle in one).
+        let text = r#"<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20161101">
+  <uml:StateMachine xmi:id="sm" name="Shared">
+    <region xmi:id="r">
+      <subvertex xmi:type="uml:State" xmi:id="s1"><connectionPoint xmi:type="uml:Pseudostate" xmi:id="ep" kind="entryPoint"/></subvertex>
+      <subvertex xmi:type="uml:State" xmi:id="s1"><connectionPoint xmi:type="uml:Pseudostate" xmi:id="ep" kind="entryPoint"/></subvertex>
+      <transition xmi:id="t3" source="ep" target="s1"/>
+    </region>
+  </uml:StateMachine>
+</xmi:XMI>"#;
+        let mut saved = to_xmi(&from_xmi(text).unwrap()).unwrap();
+        for _ in 0..3 {
+            assert_eq!(saved.matches(r#"xmi:id="ep""#).count(), 2, "each entry point written once");
+            assert_eq!(saved.matches(r#"xmi:id="s1""#).count(), 2);
+            saved = to_xmi(&from_xmi(&saved).unwrap()).unwrap();
+        }
     }
 
     #[test]
