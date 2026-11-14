@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::geometry::{n1, polyline_mid};
+use crate::geometry::polyline_mid;
 use crate::model::{
     Colors, FsmModel, ITEM_COLOR_KEYS, MachineKind, ModelIndex, Point, PointKind, Region, RegionLayout, Transition,
     TransitionKind, Vertex, VertexType, js_space, js_trim,
@@ -522,10 +522,10 @@ fn read_layout(root: &XmlElement, model: &mut FsmModel) {
                 if let (Some(lb), true) = (label.and_then(|l| kid(l, "bounds")), pts.len() >= 2) {
                     let mid = polyline_mid(&pts);
                     let n = |k: &str| js_number(lb.attr(k));
-                    tr.label_offset = Some(Point {
-                        x: n1(n("x") + n("width") / 2.0 - mid.x),
-                        y: n1(n("y") + n("height") / 2.0 - mid.y),
-                    });
+                    // Not rounded: the middle is off the 0.1 px grid, and an offset rounded to 0.1 px could move the
+                    // label by 0.1 px on each save. Written again from the same waypoints, it gives the same label box.
+                    tr.label_offset =
+                        Some(Point { x: n("x") + n("width") / 2.0 - mid.x, y: n("y") + n("height") / 2.0 - mid.y });
                 }
             }
         }
@@ -559,7 +559,8 @@ fn read_layout(root: &XmlElement, model: &mut FsmModel) {
     }
 }
 
-fn default_size(t: VertexType) -> (f64, f64) {
+/// The size of a vertex without one (no shape, or a width or height of 0).
+pub(crate) fn default_size(t: VertexType) -> (f64, f64) {
     match t {
         VertexType::State => (140.0, 60.0),
         VertexType::Final | VertexType::ShallowHistory | VertexType::DeepHistory => (26.0, 26.0),

@@ -4,6 +4,12 @@
 //! triggers, behaviors, diagram elements), the region shapes it computes from the state's header, the label boxes,
 //! JavaScript's arithmetic and its number formatting. The same applies to the editors' copies of that writer
 //! (`Xmi.cs`, `Xmi.kt`).
+//!
+//! One save settles a file: reading what `to_xmi` wrote and writing it again gives the same text. So the bounds are
+//! rounded to 0.1 px before anything is derived from them, a size of 0 is written as the default size reading gives
+//! it, region sizes are written as the region shapes hold them, a label's middle is measured on the written waypoints,
+//! each element is written once and the diagram follows document order; with ids used twice, what reading gives is
+//! written again until the text no longer changes.
 
 use std::collections::{HashMap, HashSet};
 
@@ -129,8 +135,8 @@ fn internal_label(t: &Transition, protocol: bool) -> String {
 }
 
 /// The height of a state's header, as the diagram editor draws it (`headerHeight`): its name, its stereotype, its
-/// internal activities wrapped to the state's width.
-fn header_height(v: &Vertex, m: &FsmModel) -> f64 {
+/// internal activities wrapped to the state's width. `transitions` are the transitions the document holds.
+fn header_height(v: &Vertex, protocol: bool, transitions: &[&Transition]) -> f64 {
     let mut h = 24.0 + if v.stereotype.is_empty() { 0.0 } else { 12.0 };
     let mut lines = Vec::new();
     if !v.entry.is_empty() {
@@ -145,8 +151,7 @@ fn header_height(v: &Vertex, m: &FsmModel) -> f64 {
     for d in &v.deferrable {
         lines.push(format!("{d} / defer"));
     }
-    let protocol = m.kind == MachineKind::Protocol;
-    for t in &m.transitions {
+    for t in transitions {
         if t.kind == TransitionKind::Internal && t.source == v.id && t.target == v.id {
             lines.push(internal_label(t, protocol));
         }
@@ -171,12 +176,31 @@ pub fn region_sizes(regions: &[Region], total: f64) -> Vec<f64> {
     regions.iter().map(|_| total / regions.len() as f64).collect()
 }
 
-/// The boxes of a state's regions (`regionBounds`): under its header, side by side or stacked.
-pub fn region_bounds(v: &Vertex, m: &FsmModel) -> Vec<(f64, f64, f64, f64)> {
-    let top = v.y + js_min(header_height(v, m), v.h - 20.0);
+/// The region sizes a file holds (`fileRegionSizes`): `region_sizes` with the sizes rounded to 0.1 px as they are
+/// written, so that the sizes read back from the region shapes give the same regions (equal parts of 10 px in three
+/// would otherwise be read back as 3.3, 3.3 and the rest, and move on the next save).
+fn file_region_sizes(regions: &[Region], total: f64) -> Vec<f64> {
+    let rounded = |sizes: Vec<f64>| {
+        let regions: Vec<Region> = sizes
+            .iter()
+            .map(|&x| {
+                let mut r = Region::new("", "");
+                r.size = Some(n1(x));
+                r
+            })
+            .collect();
+        region_sizes(&regions, total)
+    };
+    rounded(rounded(region_sizes(regions, total)))
+}
+
+/// The boxes of a state's regions (`regionBounds`): under its header, side by side or stacked, with the region sizes a
+/// file holds. `transitions` are the transitions the document holds.
+pub fn region_bounds(v: &Vertex, protocol: bool, transitions: &[&Transition]) -> Vec<(f64, f64, f64, f64)> {
+    let top = v.y + js_min(header_height(v, protocol, transitions), v.h - 20.0);
     let bh = v.y + v.h - top;
     let horizontal = v.region_layout == Some(RegionLayout::Horizontal);
-    let sizes = region_sizes(&v.regions, if horizontal { v.w } else { bh });
+    let sizes = file_region_sizes(&v.regions, if horizontal { v.w } else { bh });
     let mut at = if horizontal { v.x } else { top };
     sizes
         .iter()
@@ -224,6 +248,17 @@ fn prepared(model: &FsmModel) -> FsmModel {
         m.regions.push(Region::new("r_root", ""));
     }
     crate::xmi::normalize(&mut m);
+    // Bounds as the file holds them, so that what is derived from them (centers, header lines, region shapes) comes out
+    // the same when the file is read back and written again. A size of 0 is read back as the default size: it is
+    // written as that.
+    for v in &mut m.vertices {
+        for n in [&mut v.x, &mut v.y, &mut v.w, &mut v.h] {
+            *n = n1(*n);
+        }
+        if v.w == 0.0 || v.h == 0.0 {
+            (v.w, v.h) = crate::xmi::default_size(v.vtype);
+        }
+    }
     m
 }
 
@@ -239,8 +274,41 @@ fn kind_str(k: TransitionKind) -> &'static str {
     }
 }
 
-/// Writes the machine as the editors save it.
+/// Writes the machine as the editors save it. Reading it back and writing it again gives the same text. When ids are
+/// used twice (files edited by hand), reading gives a shape, bend points or a color to the last element with that id
+/// and default places to the others, so what reading gives is written again, until the text no longer changes.
 pub fn to_xmi(model: &FsmModel) -> Result<String, String> {
+    let mut text = write_model(model)?;
+    if !shares_ids(model) {
+        return Ok(text);
+    }
+    for _ in 0..10 {
+        let again = write_model(&crate::xmi::from_xmi(&text)?)?;
+        if again == text {
+            break;
+        }
+        text = again;
+    }
+    Ok(text)
+}
+
+/// Whether vertices, transitions and regions use some id more than once.
+fn shares_ids(model: &FsmModel) -> bool {
+    let mut ids = HashSet::new();
+    let mut n = 0;
+    let all = model
+        .regions
+        .iter()
+        .map(|r| &r.id)
+        .chain(model.vertices.iter().flat_map(|v| std::iter::once(&v.id).chain(v.regions.iter().map(|r| &r.id))));
+    for id in all.chain(model.transitions.iter().map(|t| &t.id)) {
+        ids.insert(id);
+        n += 1;
+    }
+    ids.len() != n
+}
+
+fn write_model(model: &FsmModel) -> Result<String, String> {
     let m = prepared(model);
     Writer::new(&m).document()
 }
@@ -320,6 +388,13 @@ struct Writer<'a> {
     transitions_by_region: HashMap<String, Vec<usize>>,
     /// States being written, to refuse a state inside one of its own regions.
     writing: Vec<usize>,
+    /// Each vertex and transition is written once, in the first place that holds it (two states with one id, or a
+    /// region id used again, would otherwise write it twice, and the file would grow on each save).
+    written_vertices: Vec<bool>,
+    written_transitions: Vec<bool>,
+    /// What the document holds, in the order reading it gives.
+    doc_vertices: Vec<usize>,
+    doc_transitions: Vec<usize>,
 }
 
 impl<'a> Writer<'a> {
@@ -335,6 +410,10 @@ impl<'a> Writer<'a> {
             event_elements: Vec::new(),
             transitions_by_region: HashMap::new(),
             writing: Vec::new(),
+            written_vertices: vec![false; m.vertices.len()],
+            written_transitions: vec![false; m.transitions.len()],
+            doc_vertices: Vec::new(),
+            doc_transitions: Vec::new(),
         };
         // A transition is owned by the innermost region that contains both of its ends.
         for (i, t) in m.transitions.iter().enumerate() {
@@ -512,6 +591,8 @@ impl<'a> Writer<'a> {
     fn vertex_node(&mut self, i: usize) -> Result<Node, String> {
         let m = self.m;
         let v = &m.vertices[i];
+        self.written_vertices[i] = true;
+        self.doc_vertices.push(i);
         if v.vtype == VertexType::Final {
             return Ok(Node::new(
                 "subvertex",
@@ -531,10 +612,22 @@ impl<'a> Writer<'a> {
         node = node.with(Self::constraint("stateInvariant", format!("{}_inv", v.id), &v.invariant));
         let deferred = self.triggers("deferrableTrigger", &v.id, &v.deferrable);
         node = node.with(deferred);
-        for cp in m.vertices.iter().filter(|cp| cp.parent == v.id) {
+        // Read back: the connection points, then the connection point references.
+        let mut points = Vec::new();
+        let mut references = Vec::new();
+        for (j, cp) in m.vertices.iter().enumerate() {
+            if cp.parent != v.id || self.written_vertices[j] {
+                continue;
+            }
             match cp.vtype {
-                VertexType::EntryPoint | VertexType::ExitPoint => node.push(Self::point_node("connectionPoint", cp)),
+                VertexType::EntryPoint | VertexType::ExitPoint => {
+                    self.written_vertices[j] = true;
+                    points.push(j);
+                    node.push(Self::point_node("connectionPoint", cp));
+                }
                 VertexType::ConnectionPointRef => {
+                    self.written_vertices[j] = true;
+                    references.push(j);
                     let file = v.submachine.as_deref().unwrap_or("").split('#').next().unwrap_or("");
                     let end = if cp.point_kind == PointKind::Exit { "exit" } else { "entry" };
                     node.push(
@@ -548,10 +641,8 @@ impl<'a> Writer<'a> {
                 _ => {}
             }
         }
-        // States on the way down: a region id used again (a file edited by hand) can make a state its own descendant.
-        if self.writing.contains(&i) {
-            return Err(format!("State '{}' is inside one of its own regions.", v.id));
-        }
+        self.doc_vertices.extend(points);
+        self.doc_vertices.extend(references);
         self.writing.push(i);
         for r in &v.regions {
             let region = self.region_node(r)?;
@@ -574,17 +665,32 @@ impl<'a> Writer<'a> {
             vec![("xmi:type", s("uml:Region")), ("xmi:id", r.id.clone()), ("name", r.name.clone())],
         );
         for &i in &kids {
-            if m.vertices[i].vtype == VertexType::Comment {
+            if m.vertices[i].vtype == VertexType::Comment && !self.written_vertices[i] {
+                self.written_vertices[i] = true;
+                self.doc_vertices.push(i);
                 node.push(Self::comment_node(&m.vertices[i]));
             }
         }
         for &i in &kids {
-            if m.vertices[i].vtype != VertexType::Comment {
+            if m.vertices[i].vtype == VertexType::Comment {
+                continue;
+            }
+            // States on the way down: a region id used again (a file edited by hand) can make a state its own
+            // descendant.
+            if self.writing.contains(&i) {
+                return Err(format!("State '{}' is inside one of its own regions.", m.vertices[i].id));
+            }
+            if !self.written_vertices[i] {
                 let v = self.vertex_node(i)?;
                 node.push(v);
             }
         }
         for t in self.transitions_by_region.get(&r.id).cloned().unwrap_or_default() {
+            if self.written_transitions[t] {
+                continue;
+            }
+            self.written_transitions[t] = true;
+            self.doc_transitions.push(t);
             let t = self.transition_node(t);
             node.push(t);
         }
@@ -622,23 +728,39 @@ impl<'a> Writer<'a> {
             )
             .with([Self::bounds(x, y, w, h)])
         };
-        for v in &m.vertices {
+        // What the document holds, in the order reading it gives (a model in another order, or holding elements the
+        // document doesn't, would otherwise be written differently once read back).
+        let vertices: Vec<&Vertex> = self.doc_vertices.iter().map(|&i| &m.vertices[i]).collect();
+        let transitions: Vec<&Transition> = self.doc_transitions.iter().map(|&i| &m.transitions[i]).collect();
+        let mut by_id: HashMap<&str, usize> = HashMap::new();
+        for &i in &self.doc_vertices {
+            by_id.insert(&m.vertices[i].id, i);
+        }
+        let ids: HashSet<&str> =
+            vertices.iter().map(|v| v.id.as_str()).chain(transitions.iter().map(|t| t.id.as_str())).collect();
+        for v in &vertices {
             diagram.push(shape(&v.id, (v.x, v.y, v.w, v.h)));
             if v.vtype == VertexType::State {
-                for (r, b) in v.regions.iter().zip(region_bounds(v, m)) {
+                for (r, b) in v.regions.iter().zip(region_bounds(v, self.protocol, &transitions)) {
                     diagram.push(shape(&r.id, b));
                 }
             }
         }
-        for t in &m.transitions {
-            let (Some(si), Some(gi)) = (self.index.vertex(&t.source), self.index.vertex(&t.target)) else { continue };
-            let (sv, gv) = (self.index.v(si), self.index.v(gi));
+        for t in &transitions {
+            let (Some(&si), Some(&gi)) = (by_id.get(t.source.as_str()), by_id.get(t.target.as_str())) else {
+                continue;
+            };
+            let (sv, gv) = (&m.vertices[si], &m.vertices[gi]);
             if t.kind == TransitionKind::Internal && si == gi && sv.vtype == VertexType::State {
                 continue; // drawn in the state's compartment
             }
+            // The waypoints as written: the label's middle is measured on them, as reading does.
             let mut pts = vec![center(sv.x, sv.y, sv.w, sv.h)];
             pts.extend(t.points.iter().copied());
             pts.push(center(gv.x, gv.y, gv.w, gv.h));
+            for p in &mut pts {
+                (p.x, p.y) = (n1(p.x), n1(p.y));
+            }
             let mut edge = Node::new(
                 "ownedElement",
                 vec![
@@ -652,7 +774,7 @@ impl<'a> Writer<'a> {
             for p in &pts {
                 edge.push(Node::new(
                     "waypoint",
-                    vec![("xmi:type", s("dc:Point")), ("x", js_number(n1(p.x))), ("y", js_number(n1(p.y)))],
+                    vec![("xmi:type", s("dc:Point")), ("x", js_number(p.x)), ("y", js_number(p.y))],
                 ));
             }
             if let Some(off) = t.label_offset {
@@ -672,9 +794,9 @@ impl<'a> Writer<'a> {
             }
             diagram.push(edge);
         }
-        for c in m.vertices.iter().filter(|c| c.vtype == VertexType::Comment) {
+        for c in vertices.iter().filter(|c| c.vtype == VertexType::Comment) {
             for (i, a) in c.anchors.iter().enumerate() {
-                if !self.index.has_vertex(a) && !m.transitions.iter().any(|t| &t.id == a) {
+                if !ids.contains(a.as_str()) {
                     continue;
                 }
                 diagram.push(Node::new(
@@ -691,8 +813,7 @@ impl<'a> Writer<'a> {
         }
         // Colors and groups.
         let mut styles = Vec::new();
-        let colored =
-            m.vertices.iter().map(|v| (&v.id, &v.colors)).chain(m.transitions.iter().map(|t| (&t.id, &t.colors)));
+        let colored = vertices.iter().map(|v| (&v.id, &v.colors)).chain(transitions.iter().map(|t| (&t.id, &t.colors)));
         for (id, c) in colored {
             let mut attrs = Vec::new();
             if is_color(&c.color) {
@@ -710,7 +831,7 @@ impl<'a> Writer<'a> {
             }
         }
         let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
-        for v in m.vertices.iter().filter(|v| !v.group.is_empty()) {
+        for v in vertices.iter().filter(|v| !v.group.is_empty()) {
             match groups.iter_mut().find(|(g, _)| *g == v.group) {
                 Some((_, members)) => members.push(&v.id),
                 None => groups.push((&v.group, vec![&v.id])),
@@ -749,13 +870,19 @@ impl<'a> Writer<'a> {
                 .with([Node::text("body", &m.documentation)]),
             );
         }
-        for v in m.vertices.iter().filter(|v| self.is_machine_point(v)) {
-            machine.push(Self::point_node("connectionPoint", v));
-        }
+        // The machine's own connection points come first in the file, but are read after its regions.
+        let mut regions = Vec::new();
         for r in &m.regions {
-            let region = self.region_node(r)?;
-            machine.push(region);
+            regions.push(self.region_node(r)?);
         }
+        for (i, v) in m.vertices.iter().enumerate() {
+            if self.is_machine_point(v) && !self.written_vertices[i] {
+                self.written_vertices[i] = true;
+                self.doc_vertices.push(i);
+                machine.push(Self::point_node("connectionPoint", v));
+            }
+        }
+        machine = machine.with(regions);
 
         let mut packaged = Vec::new();
         if m.context.is_empty() {
@@ -780,8 +907,12 @@ impl<'a> Writer<'a> {
         packaged.append(&mut self.event_elements);
 
         // Stereotypes: an embedded profile with one stereotype per name, extending UML::State.
-        let stereotyped: Vec<&Vertex> =
-            m.vertices.iter().filter(|v| v.vtype == VertexType::State && !v.stereotype.is_empty()).collect();
+        let stereotyped: Vec<&Vertex> = self
+            .doc_vertices
+            .iter()
+            .map(|&i| &m.vertices[i])
+            .filter(|v| v.vtype == VertexType::State && !v.stereotype.is_empty())
+            .collect();
         let mut names: Vec<&str> = Vec::new();
         for v in &stereotyped {
             if !names.contains(&v.stereotype.as_str()) {
@@ -1006,6 +1137,39 @@ lines &amp; &quot;quotes&quot;</body>
 </xmi:XMI>
 "##;
         assert_eq!(to_xmi(&from_xmi(text).unwrap()).unwrap(), text);
+    }
+
+    #[test]
+    fn one_save_settles() {
+        // Edited by hand: regions without shapes (equal parts of 127 px in three), a transition in an outer region,
+        // coordinates off the 0.1 px grid, an infinite width, a label far from the origin, and two states sharing an
+        // id, each with an entry point.
+        let text = r#"<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20161101" xmlns:umldi="http://www.omg.org/spec/UML/20161101/UMLDI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC">
+  <uml:StateMachine xmi:id="sm" name="Settle">
+    <region xmi:id="r">
+      <subvertex xmi:type="uml:State" xmi:id="P"><region xmi:id="p1"/><region xmi:id="p2"/><region xmi:id="p3"/></subvertex>
+      <subvertex xmi:type="uml:State" xmi:id="C"><region xmi:id="c1"><subvertex xmi:type="uml:State" xmi:id="In"/></region></subvertex>
+      <subvertex xmi:type="uml:State" xmi:id="Near"/>
+      <subvertex xmi:type="uml:State" xmi:id="Far"/>
+      <subvertex xmi:type="uml:State" xmi:id="s1"><connectionPoint xmi:type="uml:Pseudostate" xmi:id="ep" kind="entryPoint"/></subvertex>
+      <subvertex xmi:type="uml:State" xmi:id="s1"><connectionPoint xmi:type="uml:Pseudostate" xmi:id="ep" kind="entryPoint"/></subvertex>
+      <transition xmi:id="t1" source="Near" target="Far"/>
+      <transition xmi:id="t2" source="In" target="In"/>
+      <transition xmi:id="t3" source="ep" target="s1"/>
+    </region>
+  </uml:StateMachine>
+  <umldi:UMLStateMachineDiagram xmi:id="d">
+    <ownedElement xmi:type="umldi:UMLShape" modelElement="P"><bounds x="0" y="200" width="300" height="151"/></ownedElement>
+    <ownedElement xmi:type="umldi:UMLShape" modelElement="C"><bounds x="400.04" y="0" width="1e400" height="160"/></ownedElement>
+    <ownedElement xmi:type="umldi:UMLShape" modelElement="Near"><bounds x="11.6" y="0" width="140.2" height="60.1"/></ownedElement>
+    <ownedElement xmi:type="umldi:UMLShape" modelElement="Far"><bounds x="22624" y="120" width="140" height="60"/></ownedElement>
+    <ownedElement xmi:type="umldi:UMLEdge" modelElement="t1"><waypoint x="81.7" y="30.1"/><waypoint x="22694" y="150"/>
+      <ownedElement xmi:type="umldi:UMLLabel"><bounds x="11303.85" y="106.05" width="100" height="16"/></ownedElement></ownedElement>
+  </umldi:UMLStateMachineDiagram>
+</xmi:XMI>"#;
+        let saved = to_xmi(&from_xmi(text).unwrap()).unwrap();
+        assert_eq!(to_xmi(&from_xmi(&saved).unwrap()).unwrap(), saved);
+        assert_eq!(saved.matches(r#"xmi:id="ep""#).count(), 2, "each entry point written once");
     }
 
     #[test]

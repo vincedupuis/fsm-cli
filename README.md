@@ -214,7 +214,7 @@ fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--json]
 | `--json` | Print the report as one JSON document on stdout (see below) instead of text on stderr. |
 | `-h, --help` | |
 
-Merges two versions of a state machine, `ours` and `theirs`, made from a common one, the `base`: a three-way merge by `xmi:id`, property by property, with the elements and properties of [`fsm diff`](#fsm-diff). The merged file is always a valid `.fsm` file, without conflict markers, written exactly as the editors write it: opening it and saving it in an editor doesn't change it (except where the editors themselves don't keep a file as it is: some files edited by hand change each time they are saved).
+Merges two versions of a state machine, `ours` and `theirs`, made from a common one, the `base`: a three-way merge by `xmi:id`, property by property, with the elements and properties of [`fsm diff`](#fsm-diff). The merged file is always a valid `.fsm` file, without conflict markers, written exactly as the editors write it: opening it and saving it in an editor doesn't change it.
 
 **Merged without a question:**
 
