@@ -12,6 +12,9 @@
 //! - Layout never conflicts: when both sides changed a drawing property, ours' value is kept and reported. Positions
 //!   are merged relative to the owning state and bend points relative to the source, then made absolute again from
 //!   the merged owner: a child moved on one side inside a state moved on the other lands inside the moved state.
+//!   Bend points that only one side moved on the canvas are taken as that side has them: dragging a state leaves the
+//!   bend points of its transitions to and from other vertices where they are, so a side that only moved a state has
+//!   not changed them (as in `fsm diff`, they changed when they moved both on the canvas and relative to the source).
 //! - Conflicts keep ours' value: a model property set to two different values; an element deleted on one side and
 //!   changed, or given new contents or transitions, on the other (kept deleted when ours deleted it, kept with what it
 //!   holds when theirs did); two states moved into each other (ours' owners are kept).
@@ -321,8 +324,9 @@ struct MergedTransition {
     b: Option<usize>,
     o: Option<(Src, usize)>,
     tt: Option<(Src, usize)>,
-    /// Where its bend points come from: relative to its source there.
+    /// Where its bend points come from: relative to its source there, or as they are when `absolute`.
     points: (Src, usize),
+    absolute: bool,
 }
 
 struct Merger<'a> {
@@ -929,7 +933,7 @@ impl<'a> Merger<'a> {
         let label = self.label_of(Element::Transition, b, o, t);
         let (Some(o), Some(t), Some(ot), Some(tt)) = (o, t, ot, tt) else {
             let only = o.or(t).expect("a side has the transition");
-            return MergedTransition { t: tr, b, o, tt: t, points: only };
+            return MergedTransition { t: tr, b, o, tt: t, points: only, absolute: false };
         };
         let bp = b.map(|i| transition_properties(self.b().m, i));
         let op = transition_properties(self.version(o.0).m, o.1);
@@ -986,8 +990,27 @@ impl<'a> Merger<'a> {
             }
         };
         // The bend points go with the source: from the side that gave the transition another source.
+        let mut absolute = false;
         let pts = if bt.is_some_and(|b| b.source != tr.source) || bt.is_none() && ot.source != tt.source {
             if ot.source == tr.source { o } else { t }
+        } else if let Some(bs) = bsrc {
+            // A side touched the bend points when they moved on the canvas, and changed them when they also moved
+            // relative to the source (dragging a state alone leaves them where they are on the canvas; dragging it
+            // with the other end moves them with it).
+            let canvas = |x: (Src, usize)| &self.transition(x).points;
+            let (touched_o, touched_t) = (canvas(o) != canvas(bs), canvas(t) != canvas(bs));
+            if !(touched_o && touched_t) {
+                absolute = true;
+                if touched_t { t } else { o }
+            } else {
+                let relative = |x| points(self, x, false);
+                let (rb, ro, rt) = (relative(bs), relative(o), relative(t));
+                match (ro != rb, rt != rb) {
+                    (true, false) => o,
+                    (false, true) => t,
+                    _ => take(self, "points", &points),
+                }
+            }
         } else {
             take(self, "points", &points)
         };
@@ -998,7 +1021,7 @@ impl<'a> Merger<'a> {
         let s = take(self, "itemColors", &items);
         tr.colors.items = self.transition(s).colors.items.clone();
         self.note(&id, Element::Transition, label, notes);
-        MergedTransition { t: tr, b, o: Some(o), tt: Some(t), points: pts }
+        MergedTransition { t: tr, b, o: Some(o), tt: Some(t), points: pts, absolute }
     }
 
     // -------------------------------------------------------------- the whole machine
@@ -1233,7 +1256,7 @@ impl<'a> Merger<'a> {
     }
 
     /// Absolute positions again: each vertex at its position relative to its owner, from the side it was taken from,
-    /// inside its merged owner; bend points relative to the source likewise.
+    /// inside its merged owner; bend points relative to the source likewise, unless taken as they are on the canvas.
     fn place(&self, m: &mut FsmModel, vertices: Vec<MergedVertex>, transitions: Vec<MergedTransition>) {
         m.vertices = vertices.iter().map(|x| x.v.clone()).collect();
         let ix_model = m.clone();
@@ -1278,6 +1301,7 @@ impl<'a> Merger<'a> {
                 let from = ver.ix().vertex(&src_t.source).map(|k| (ver.m.vertices[k].x, ver.m.vertices[k].y));
                 let to = ix.vertex(&t.source).map(|k| (m.vertices[k].x, m.vertices[k].y));
                 t.points = match (from, to) {
+                    _ if x.absolute => src_t.points.clone(),
                     (Some(f), Some(to)) if f != to => src_t
                         .points
                         .iter()
@@ -1815,6 +1839,24 @@ mod tests {
             r.to_text("x"),
             "x: 1 change merged, 0 conflicts\n  · layout: state Off moved on both sides, kept ours\n"
         );
+    }
+
+    #[test]
+    fn a_state_dragged_alone_leaves_the_other_sides_bend_points_where_that_side_put_them() {
+        // Ours drags Dim, t3's source, alone: t3's bend points stay where they are on the canvas. Theirs moves one.
+        let ours = side(|m| v(m, "Dim").x -= 20.0);
+        let theirs = side(|m| t(m, "t3").points[0] = Point { x: 460.0, y: 170.0 });
+        for (a, b) in [(&ours, &theirs), (&theirs, &ours)] {
+            let (r, m) = run(a, b);
+            assert!(r.clean() && r.layout.is_empty(), "{}", r.to_text("x"));
+            assert_eq!(get(&m, "Dim").unwrap().x, 300.0);
+            assert_eq!(tr(&m, "t3").unwrap().points, [Point { x: 460.0, y: 170.0 }]);
+        }
+        // Both moved the bend point: ours is kept and reported.
+        let theirs2 = side(|m| t(m, "t3").points[0] = Point { x: 400.0, y: 190.0 });
+        let (r, m) = run(&theirs, &theirs2);
+        assert_eq!(r.layout.len(), 1);
+        assert_eq!(tr(&m, "t3").unwrap().points, [Point { x: 460.0, y: 170.0 }]);
     }
 
     #[test]

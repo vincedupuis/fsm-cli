@@ -78,7 +78,7 @@ Compares two versions of a state machine, for instance a file and its last commi
   - Machine: name, kind, context, documentation, top-level regions.
   - Vertex: type, name, owner, regions (ids and names), entry, exit, do activity, deferred events, invariant, submachine, stereotype, referenced point (connection point references), comment text and anchors.
   - Transition: source, target, kind, triggers, guard, effect, precondition, postcondition.
-- **Layout only (`·`):** only drawing properties differ: position and size, region layout and sizes, bend points, label offset, colors, group. Positions are compared relative to the state that owns the vertex, and bend points relative to the transition's source: dragging a composite state with its content marks that state, not everything inside it. Numbers are compared at 0.1 px, as files store them, so smaller differences don't count. The region layout and sizes of a state whose regions were added or removed aren't compared: the change of regions says it.
+- **Layout only (`·`):** only drawing properties differ: position and size, region layout and sizes, bend points, label offset, colors, group. Positions are compared relative to the state that owns the vertex, and bend points relative to the transition's source: dragging a composite state with its content marks that state, not everything inside it. Bend points count as changed only when they moved both relative to the source and on the canvas: dragging a state alone leaves the bend points of its transitions to and from other vertices where they are, so it marks that state, not those transitions. Numbers are compared at 0.1 px, as files store them, so smaller differences don't count. The region layout and sizes of a state whose regions were added or removed aren't compared: the change of regions says it.
 - **Changed wins over layout:** an element with both is changed, and its first line says `(also moved)`.
 - **A missing or empty file** is a file without a machine: everything in the other file is added or removed (`/dev/null` is an empty file). Both files missing is an error.
 - **Exit codes:** `0` the files were compared (with or without differences), `1` a file can't be read or isn't a state machine (`fsm: X is not a valid state machine file: …`), `2` bad usage.
@@ -194,7 +194,7 @@ Values are shown on one line: line breaks become spaces.
 | `size` | `{ "width", "height" }` |
 | `regionLayout` | `horizontal` or `vertical` (states with several regions) |
 | `regionSizes` | each region's size along the layout, `null` when it has no shape (states with regions) |
-| `points` | the bend points, `[{ "x", "y" }]`, relative to the source |
+| `points` | the bend points, `[{ "x", "y" }]`, relative to the source (listed only when they also moved on the canvas) |
 | `labelOffset` | `{ "x", "y" }` from the middle of the line, `null` for the default place |
 | `color` | `#rrggbb`, `""` when none |
 | `itemColors` | `{ "<item>": "#rrggbb" }` for the items that have their own color (`background`, `entry`, `exit`, `doActivity`, `deferrable`, `invariant`, `triggers`, `guard`, `effect`, `precondition`, `postcondition`) |
@@ -224,7 +224,7 @@ Merges two versions of a state machine, `ours` and `theirs`, made from a common 
 - A deleted element takes its contents (the vertices in its regions, the points on its border), its transitions and the comments' anchors to it with it, as deleting it in the editor does.
 - The events list, the diagram ids and the region shapes are written again from the merged machine, as the editors do, never merged as text.
 
-**Layout never conflicts.** The drawing properties (position, size, region layout and sizes, bend points, label offset, colors, group) take ours' value when both sides changed them, and the report says so. Positions are merged relative to the state that owns the vertex and bend points relative to the transition's source, then placed in the merged machine: a state moved on one side inside a composite state moved on the other ends up where it was moved, inside the moved composite. A vertex moved to another region takes its position from the side that moved it. Numbers are compared at 0.1 px, as files store them.
+**Layout never conflicts.** The drawing properties (position, size, region layout and sizes, bend points, label offset, colors, group) take ours' value when both sides changed them, and the report says so. Positions are merged relative to the state that owns the vertex and bend points relative to the transition's source, then placed in the merged machine: a state moved on one side inside a composite state moved on the other ends up where it was moved, inside the moved composite. As in `fsm diff`, a side changed a transition's bend points only when they moved both relative to the source and on the canvas: when only one side moved them on the canvas, they are taken as that side has them, so a side that only dragged a state doesn't stop the other side's new bend points from landing where it put them. A vertex moved to another region takes its position from the side that moved it. Numbers are compared at 0.1 px, as files store them.
 
 **Conflicts** keep ours and are reported:
 

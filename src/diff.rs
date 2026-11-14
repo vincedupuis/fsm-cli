@@ -235,6 +235,11 @@ pub fn transition_layout(index: &ModelIndex, t: usize) -> Vec<(&'static str, Val
     out
 }
 
+/// A transition's bend points where they are on the canvas, rounded as the layout is compared.
+fn canvas_points(t: &crate::model::Transition) -> Value {
+    Value::List(t.points.iter().map(|p| Value::point(p.x, p.y)).collect())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Element {
     Machine,
@@ -747,7 +752,13 @@ pub fn diff(old: Option<&FsmModel>, new: Option<&FsmModel>) -> Diff {
         match (i, j) {
             (Some(i), Some(j)) => {
                 let mc = model_changes(differences(transition_properties(o, i), transition_properties(n, j)));
-                let lc = layout_changes(differences(transition_layout(&on.index, i), transition_layout(&nn.index, j)));
+                let mut layout = differences(transition_layout(&on.index, i), transition_layout(&nn.index, j));
+                // Dragging a state leaves the bend points of its transitions to and from other vertices where they are
+                // on the canvas: they changed only when they moved both relative to the source and on the canvas.
+                if canvas_points(&o.transitions[i]) == canvas_points(&n.transitions[j]) {
+                    layout.retain(|(p, _, _)| *p != "points");
+                }
+                let lc = layout_changes(layout);
                 sort(&n.transitions[j].id, Element::Transition, on.transition_label(i), mc, lc);
             }
             (None, Some(j)) => added.push(element(
@@ -1116,9 +1127,9 @@ mod tests {
         assert_eq!((e.status, e.moved), (Status::Changed, true));
         let props: Vec<&str> = e.changes.iter().map(|c| c.property).collect();
         assert_eq!(props, ["name", "position"]);
-        assert_eq!(d.to_text("x"), "x\n  ~ state Off renamed to Dark (also moved)\n  · 1 shape moved (layout only)\n");
-        // The source of t1 moved without its bend point: t1's route changed.
-        assert_eq!((d.elements[1].id.as_str(), d.elements[1].status), ("t1", Status::Layout));
+        // The source of t1 moved without its bend point, as dragging Off alone leaves it: t1 didn't change.
+        assert_eq!(d.to_text("x"), "x\n  ~ state Off renamed to Dark (also moved)\n");
+        assert_eq!(d.elements.len(), 1);
     }
 
     #[test]
@@ -1145,6 +1156,15 @@ mod tests {
         // A bend point moved alone.
         let d = compare(&[(r#"<waypoint x="260" y="50"/>"#, r#"<waypoint x="260" y="60"/>"#)]);
         assert_eq!(d.elements.iter().map(|e| (e.id.as_str(), e.status)).collect::<Vec<_>>(), [("t1", Status::Layout)]);
+        // Off dragged alone: its outgoing t1 keeps its bend point on the canvas and isn't listed.
+        let d = compare(&[(r#"<bounds x="80" y="20""#, r#"<bounds x="70" y="20""#)]);
+        assert_eq!(d.elements.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["Off"]);
+        // Off dragged and t1's bend point moved elsewhere: both listed, t1's points relative to Off.
+        let d = compare(&[
+            (r#"<bounds x="80" y="20""#, r#"<bounds x="70" y="20""#),
+            (r#"<waypoint x="260" y="50"/>"#, r#"<waypoint x="260" y="60"/>"#),
+        ]);
+        assert_eq!(d.elements.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["Off", "t1"]);
     }
 
     #[test]
