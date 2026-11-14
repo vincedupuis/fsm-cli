@@ -14,6 +14,7 @@ mod expressions;
 pub mod generate;
 pub mod geometry;
 mod languages;
+pub mod merge;
 pub mod model;
 pub mod paths;
 pub mod render;

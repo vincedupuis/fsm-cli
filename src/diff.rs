@@ -20,6 +20,7 @@ use crate::model::{FsmModel, ModelIndex, PointKind, Region, RegionLayout, Transi
 #[derive(Debug, Clone)]
 pub enum Value {
     Null,
+    Bool(bool),
     Number(f64),
     Text(String),
     List(Vec<Value>),
@@ -30,6 +31,7 @@ impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Null, Value::Null) => true,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Number(a), Value::Number(b)) => a == b || (a.is_nan() && b.is_nan()),
             (Value::Text(a), Value::Text(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
@@ -40,7 +42,7 @@ impl PartialEq for Value {
 }
 
 impl Value {
-    fn text(s: &str) -> Value {
+    pub(crate) fn text(s: &str) -> Value {
         Value::Text(s.to_string())
     }
 
@@ -49,29 +51,29 @@ impl Value {
     }
 
     /// A coordinate, rounded to 0.1 as in files.
-    fn coordinate(n: f64) -> Value {
+    pub(crate) fn coordinate(n: f64) -> Value {
         Value::Number(n1(n))
     }
 
-    fn point(x: f64, y: f64) -> Value {
+    pub(crate) fn point(x: f64, y: f64) -> Value {
         Value::Object(vec![("x", Value::coordinate(x)), ("y", Value::coordinate(y))])
     }
 
-    fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         match self {
             Value::Text(s) => s,
             _ => "",
         }
     }
 
-    fn as_list(&self) -> &[Value] {
+    pub(crate) fn as_list(&self) -> &[Value] {
         match self {
             Value::List(l) => l,
             _ => &[],
         }
     }
 
-    fn field(&self, key: &str) -> &str {
+    pub(crate) fn field(&self, key: &str) -> &str {
         match self {
             Value::Object(fields) => fields.iter().find(|(k, _)| *k == key).map_or("", |(_, v)| v.as_str()),
             _ => "",
@@ -83,6 +85,7 @@ impl Serialize for Value {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
             Value::Null => s.serialize_unit(),
+            Value::Bool(b) => s.serialize_bool(*b),
             // Whole numbers without a fraction, as JavaScript writes them; NaN and infinities as null.
             Value::Number(n) if !n.is_finite() => s.serialize_unit(),
             Value::Number(n) if n.fract() == 0.0 && n.abs() < 1e15 => s.serialize_i64(*n as i64),
@@ -193,7 +196,7 @@ pub fn transition_properties(m: &FsmModel, t: usize) -> Vec<(&'static str, Value
     ]
 }
 
-fn colors(c: &crate::model::Colors) -> [(&'static str, Value); 2] {
+pub(crate) fn colors(c: &crate::model::Colors) -> [(&'static str, Value); 2] {
     let items = c.items.iter().map(|(k, v)| (*k, Value::text(v))).collect();
     [("color", Value::text(&c.color)), ("itemColors", Value::Object(items))]
 }
@@ -232,7 +235,7 @@ pub fn transition_layout(index: &ModelIndex, t: usize) -> Vec<(&'static str, Val
     out
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Element {
     Machine,
     Vertex,
@@ -345,12 +348,12 @@ fn one_line(s: &str) -> String {
 }
 
 /// Names elements in one version of the machine.
-struct Namer<'a> {
-    index: ModelIndex<'a>,
+pub(crate) struct Namer<'a> {
+    pub(crate) index: ModelIndex<'a>,
 }
 
 impl<'a> Namer<'a> {
-    fn new(m: &'a FsmModel) -> Namer<'a> {
+    pub(crate) fn new(m: &'a FsmModel) -> Namer<'a> {
         Namer { index: ModelIndex::new(m) }
     }
 
@@ -359,7 +362,7 @@ impl<'a> Namer<'a> {
     }
 
     /// A vertex in another element's label: its name, the point it references, or its kind; an unknown id as is.
-    fn short(&self, id: &str) -> String {
+    pub(crate) fn short(&self, id: &str) -> String {
         let Some(i) = self.index.vertex(id) else { return id.to_string() };
         let v = self.index.v(i);
         match v.vtype {
@@ -370,7 +373,7 @@ impl<'a> Namer<'a> {
         }
     }
 
-    fn vertex_label(&self, v: usize) -> String {
+    pub(crate) fn vertex_label(&self, v: usize) -> String {
         let vx = self.index.v(v);
         let owner = self.index.owner_state(v).map(|o| self.short(&self.index.v(o).id));
         match vx.vtype {
@@ -412,7 +415,7 @@ impl<'a> Namer<'a> {
         }
     }
 
-    fn transition_label(&self, t: usize) -> String {
+    pub(crate) fn transition_label(&self, t: usize) -> String {
         let tr = &self.m().transitions[t];
         let on = if tr.triggers.is_empty() { String::new() } else { format!(" on {}", tr.triggers.join(", ")) };
         if tr.kind == TransitionKind::Internal {
@@ -421,13 +424,13 @@ impl<'a> Namer<'a> {
         format!("Transition {} → {}{on}", self.short(&tr.source), self.short(&tr.target))
     }
 
-    fn machine_label(&self) -> String {
+    pub(crate) fn machine_label(&self) -> String {
         let name = &self.m().name;
         if name.is_empty() { "Machine".to_string() } else { format!("Machine {name}") }
     }
 
     /// Where a vertex is: a region (of a state or of the machine), or a state for a vertex on its border.
-    fn place(&self, id: &str) -> String {
+    pub(crate) fn place(&self, id: &str) -> String {
         let m = self.m();
         let region = |list: &[Region], of: String| {
             let at = list.iter().position(|r| r.id == id).unwrap_or(0);
@@ -446,7 +449,7 @@ impl<'a> Namer<'a> {
     }
 
     /// An element a comment is attached to.
-    fn anchor(&self, id: &str) -> String {
+    pub(crate) fn anchor(&self, id: &str) -> String {
         if self.index.has_vertex(id) {
             return self.short(id);
         }
@@ -531,7 +534,7 @@ fn regions_sentence(before: &Value, after: &Value) -> String {
 }
 
 /// A text property's value, as shown in sentences.
-fn shown(property: &str, v: &str) -> String {
+pub(crate) fn shown(property: &str, v: &str) -> String {
     match property {
         "guard" | "invariant" | "precondition" | "postcondition" => format!("[{}]", one_line(v)),
         "stereotype" => format!("«{v}»"),
@@ -559,7 +562,7 @@ fn text_sentence(property: &str, before: &str, after: &str) -> String {
     }
 }
 
-fn type_word(v: &Value) -> String {
+pub(crate) fn type_word(v: &Value) -> String {
     let t = v.as_str();
     let all = [
         VertexType::State,
@@ -580,7 +583,7 @@ fn type_word(v: &Value) -> String {
     all.iter().find(|k| k.as_str() == t).map_or(t.to_string(), |k| kind_word(*k).to_lowercase())
 }
 
-fn point_shown(v: &Value) -> String {
+pub(crate) fn point_shown(v: &Value) -> String {
     match v {
         Value::Object(_) => format!("{} point {}", v.field("kind"), v.field("ref")),
         _ => "none".to_string(),
@@ -774,7 +777,7 @@ pub fn diff(old: Option<&FsmModel>, new: Option<&FsmModel>) -> Diff {
 // ------------------------------------------------------------------ output
 
 /// A label inside a line: its first letter in lowercase (`state Playing`).
-fn in_line(label: &str) -> String {
+pub(crate) fn in_line(label: &str) -> String {
     let mut c = label.chars();
     c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }

@@ -1,6 +1,7 @@
 //! `fsm`, the command-line tool of FSM Editor: `fsm <command> [options]`. One module per command.
 
 mod diff;
+mod merge;
 mod write;
 
 use std::process::ExitCode;
@@ -12,6 +13,7 @@ The command-line tool of FSM Editor, for UML state machines (.fsm files).
 Commands:
   write    Generates code from state machines with a Jinja template.
   diff     Compares two versions of a state machine.
+  merge    Merges two versions of a state machine made from a common one.
 
 Run 'fsm <command> --help' for the options of a command.
 
@@ -26,6 +28,8 @@ pub enum Failure {
     Usage { message: String, command: &'static str },
     /// Exit code 1.
     Error(String),
+    /// Exit code 1, after a report that says why (`merge`: conflicts remain).
+    Conflicts,
 }
 
 fn version() {
@@ -42,6 +46,7 @@ fn run(argv: &[String]) -> Result<(), Failure> {
     match command.as_str() {
         "write" => write::main(args),
         "diff" => diff::main(args),
+        "merge" => merge::main(args),
         "-h" | "--help" => {
             println!("{USAGE}");
             Ok(())
@@ -68,6 +73,7 @@ fn main() -> ExitCode {
             eprintln!("fsm: {message}");
             ExitCode::from(1)
         }
+        Err(Failure::Conflicts) => ExitCode::from(1),
     }
 }
 

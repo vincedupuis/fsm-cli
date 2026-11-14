@@ -213,3 +213,163 @@ fn diff_output() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// MACHINE with each `(from, to)` replaced.
+fn edited(edits: &[(&str, &str)]) -> String {
+    let mut text = MACHINE.to_string();
+    for (a, b) in edits {
+        assert!(text.contains(a), "{a}");
+        text = text.replacen(a, b, 1);
+    }
+    text
+}
+
+const GUARD_A: (&str, &str) = (
+    "<trigger xmi:id=\"g1\" name=\"press\"/>",
+    "<trigger xmi:id=\"g1\" name=\"press\"/><guard xmi:id=\"g\"><specification><body>a()</body></specification></guard>",
+);
+const GUARD_B: (&str, &str) = (
+    "<trigger xmi:id=\"g1\" name=\"press\"/>",
+    "<trigger xmi:id=\"g1\" name=\"press\"/><guard xmi:id=\"g\"><specification><body>b()</body></specification></guard>",
+);
+const RENAME: (&str, &str) = ("name=\"On\"", "name=\"Lit\"");
+
+#[test]
+fn merge_command_line() {
+    let dir = folder("merge-args");
+    std::fs::write(dir.join("Lamp.fsm"), MACHINE).unwrap();
+    for args in [&["merge"][..], &["merge", "--help"]] {
+        let o = fsm(&dir, args);
+        assert_eq!(o.status.code(), Some(0));
+        assert!(stdout(&o).starts_with("Usage: fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm>"));
+    }
+    for (args, message) in [
+        (&["merge", "Lamp.fsm", "Lamp.fsm", "-o", "M.fsm"][..], "Give three .fsm files: the base, ours and theirs."),
+        (&["merge", "Lamp.fsm", "Lamp.fsm", "Lamp.fsm"], "Give the file to write with -o."),
+        (&["merge", "Lamp.fsm", "Lamp.fsm", "Lamp.fsm", "-o"], "-o needs a file."),
+        (&["merge", "Lamp.fsm", "Lamp.fsm", "Lamp.fsm", "-o", "M.fsm", "--theirs"], "Unknown option --theirs."),
+    ] {
+        let o = fsm(&dir, args);
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+        assert_eq!(stderr(&o), format!("fsm: {message}\nRun 'fsm merge --help' for usage.\n"));
+    }
+    assert!(!dir.join("M.fsm").exists());
+
+    // Files that can't be merged: exit 1, and the output (here ours, which the writer would format otherwise) is left
+    // as it was.
+    let other = MACHINE.replace("xmi:id=\"sm\"", "xmi:id=\"sm2\"");
+    std::fs::write(dir.join("Other.fsm"), &other).unwrap();
+    std::fs::write(dir.join("notes.txt"), "not xml").unwrap();
+    std::fs::write(dir.join("Empty.fsm"), "\u{feff}\n").unwrap();
+    for (args, message) in [
+        (
+            &["merge", "Lamp.fsm", "Ours.fsm", "Other.fsm", "-o", "Ours.fsm"][..],
+            "fsm: ours and theirs are two different state machines (ids 'sm' and 'sm2'): they can't be merged.\n",
+        ),
+        (
+            &["merge", "Lamp.fsm", "Ours.fsm", "notes.txt", "-o", "Ours.fsm"],
+            "fsm: notes.txt is not a valid state machine file: ",
+        ),
+        (
+            &["merge", "Lamp.fsm", "Ours.fsm", "Gone.fsm", "-o", "Ours.fsm"],
+            "fsm: Gone.fsm does not exist or cannot be read.\n",
+        ),
+        (
+            &["merge", "Lamp.fsm", "Ours.fsm", "Empty.fsm", "-o", "Ours.fsm"],
+            "fsm: Empty.fsm is empty: it holds no state machine to merge.\n",
+        ),
+    ] {
+        std::fs::write(dir.join("Ours.fsm"), MACHINE).unwrap();
+        let o = fsm(&dir, args);
+        assert_eq!(o.status.code(), Some(1), "{args:?}");
+        assert!(stderr(&o).starts_with(message), "{}", stderr(&o));
+        assert_eq!(std::fs::read_to_string(dir.join("Ours.fsm")).unwrap(), MACHINE);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_over_ours_as_git_calls_it() {
+    let dir = folder("merge-git");
+    let write = |name: &str, text: &str| std::fs::write(dir.join(name), text).unwrap();
+    let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap();
+    let saved = |text: &str| fsm_cli::writer::to_xmi(&fsm_cli::xmi::from_xmi(text).unwrap()).unwrap();
+
+    // Merged: exit 0, the file written over ours, the report on stderr.
+    write("Base.fsm", MACHINE);
+    write("Ours.fsm", &edited(&[GUARD_A]));
+    write("Theirs.fsm", &edited(&[RENAME]));
+    let o = fsm(&dir, &["merge", "Base.fsm", "Ours.fsm", "Theirs.fsm", "-o", "Ours.fsm"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!((stdout(&o), stderr(&o)), (String::new(), "Ours.fsm: 2 changes merged, 0 conflicts\n".to_string()));
+    assert_eq!(read("Ours.fsm"), saved(&edited(&[GUARD_A, RENAME])));
+
+    // Conflicts: exit 1, ours kept, the file still written (valid, without conflict markers).
+    write("Ours.fsm", &edited(&[GUARD_A]));
+    write("Theirs.fsm", &edited(&[GUARD_B, RENAME]));
+    let o = fsm(&dir, &["merge", "Base.fsm", "Ours.fsm", "Theirs.fsm", "-o", "Ours.fsm"]);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(
+        stderr(&o),
+        "Ours.fsm: 1 change merged, 1 conflict\n  ✕ transition Off → On on press: guard\n      ours    [a()]\n      theirs  [b()]\n"
+    );
+    assert_eq!(read("Ours.fsm"), saved(&edited(&[GUARD_A, RENAME])));
+
+    // No common ancestor: Git passes an empty base.
+    write("Empty.fsm", "");
+    write("Ours.fsm", MACHINE);
+    let o = fsm(&dir, &["merge", "Empty.fsm", "Ours.fsm", "Base.fsm", "-o", "M.fsm"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(read("M.fsm"), saved(MACHINE));
+    let o = fsm(&dir, &["merge", "Missing.fsm", "Ours.fsm", "Base.fsm", "-o", "M.fsm"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+
+    // JSON: one document on stdout, nothing on stderr.
+    write("Ours.fsm", &edited(&[GUARD_A]));
+    let o = fsm(&dir, &["merge", "--json", "Base.fsm", "Ours.fsm", "Theirs.fsm", "-o", "M.fsm"]);
+    assert_eq!((o.status.code(), stderr(&o)), (Some(1), String::new()));
+    let text = stdout(&o);
+    let doc: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(doc["counts"], serde_json::json!({ "merged": 1, "conflicts": 1, "layout": 0, "issues": 0 }));
+    assert_eq!(
+        doc["conflicts"][0],
+        serde_json::json!({ "id": "t1", "element": "transition", "label": "Transition Off → On on press", "conflict": "property",
+            "property": "guard", "base": "", "ours": "a()", "theirs": "b()", "deletedOn": null, "region": null, "changes": [],
+            "kept": true })
+    );
+    assert_eq!(
+        doc["merged"][0],
+        serde_json::json!({ "id": "On", "element": "vertex", "status": "changed", "label": "State On", "from": "theirs" })
+    );
+    let mut keys: Vec<&str> = Vec::new();
+    for part in text.split("\":").map(|p| p.rsplit('"').next().unwrap()).take(text.matches("\":").count()) {
+        if !keys.contains(&part) {
+            keys.push(part);
+        }
+    }
+    assert_eq!(
+        keys,
+        [
+            "merged",
+            "id",
+            "element",
+            "status",
+            "label",
+            "from",
+            "conflicts",
+            "conflict",
+            "property",
+            "base",
+            "ours",
+            "theirs",
+            "deletedOn",
+            "region",
+            "changes",
+            "kept",
+            "layout",
+            "issues",
+            "counts"
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

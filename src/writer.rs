@@ -245,6 +245,68 @@ pub fn to_xmi(model: &FsmModel) -> Result<String, String> {
     Writer::new(&m).document()
 }
 
+/// The order in which reading the written file gives the vertices and the transitions (indexes into `model`'s lists):
+/// the document's, region by region (comments, then vertices, each state followed by its connection points, its
+/// connection point references and the contents of its regions, then the region's transitions), the machine's own
+/// connection points last. What the document doesn't hold (in no region) keeps its place after that. The diagram's
+/// shapes follow the model's order, so a model in another order is written differently once read back.
+pub fn document_order(model: &FsmModel) -> (Vec<usize>, Vec<usize>) {
+    let w = Writer::new(model);
+    let m = model;
+    let mut vertices = Vec::new();
+    let mut transitions = Vec::new();
+    let mut seen = vec![false; m.vertices.len()];
+    fn region(w: &Writer, id: &str, seen: &mut Vec<bool>, vertices: &mut Vec<usize>, transitions: &mut Vec<usize>) {
+        let m = w.m;
+        let kids: Vec<usize> = (0..m.vertices.len())
+            .filter(|&i| m.vertices[i].parent == id && !w.is_machine_point(&m.vertices[i]))
+            .collect();
+        for &i in kids.iter().filter(|&&i| m.vertices[i].vtype == VertexType::Comment) {
+            if !seen[i] {
+                seen[i] = true;
+                vertices.push(i);
+            }
+        }
+        for &i in kids.iter().filter(|&&i| m.vertices[i].vtype != VertexType::Comment) {
+            if seen[i] {
+                continue;
+            }
+            seen[i] = true;
+            vertices.push(i);
+            let v = &m.vertices[i];
+            if v.vtype == VertexType::Final || v.vtype.is_pseudostate() {
+                continue;
+            }
+            for kinds in [[VertexType::EntryPoint, VertexType::ExitPoint], [VertexType::ConnectionPointRef; 2]] {
+                for (j, cp) in m.vertices.iter().enumerate() {
+                    if cp.parent == v.id && kinds.contains(&cp.vtype) && !seen[j] {
+                        seen[j] = true;
+                        vertices.push(j);
+                    }
+                }
+            }
+            for r in &v.regions {
+                region(w, &r.id, seen, vertices, transitions);
+            }
+        }
+        transitions.extend(w.transitions_by_region.get(id).cloned().unwrap_or_default());
+    }
+    for r in &m.regions {
+        region(&w, &r.id, &mut seen, &mut vertices, &mut transitions);
+    }
+    for (i, v) in m.vertices.iter().enumerate() {
+        if w.is_machine_point(v) && !seen[i] {
+            seen[i] = true;
+            vertices.push(i);
+        }
+    }
+    vertices.extend((0..m.vertices.len()).filter(|&i| !seen[i]));
+    let mut placed = vec![false; m.transitions.len()];
+    transitions.retain(|&t| !std::mem::replace(&mut placed[t], true));
+    transitions.extend((0..m.transitions.len()).filter(|&t| !placed[t]));
+    (vertices, transitions)
+}
+
 struct Writer<'a> {
     m: &'a FsmModel,
     index: ModelIndex<'a>,
