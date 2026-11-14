@@ -1,6 +1,6 @@
 # fsm-cli
 
-`fsm`, the command-line tool of FSM Editor, in Rust, for its state machines (`*.fsm`: XMI 2.5.1). It is FSM Editor's code generator, with Jinja templates rendered by MiniJinja: `fsm write`. The Visual Studio and JetBrains editions run the executable; the VS Code edition runs the library built as WebAssembly, on the desktop and on the web. User docs: `README.md`.
+`fsm`, the command-line tool of FSM Editor, in Rust, for its state machines (`*.fsm`: XMI 2.5.1). It is FSM Editor's code generator, with Jinja templates rendered by MiniJinja (`fsm write`), and compares two versions of a machine (`fsm diff`). The Visual Studio and JetBrains editions run the executable; the VS Code edition runs the library built as WebAssembly, on the desktop and on the web. User docs: `README.md`.
 
 ## Commands
 
@@ -10,10 +10,11 @@ cargo build --release       # target/release/fsm
 cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown
                             # target/wasm32-unknown-unknown/wasm/fsm_cli.wasm
 cargo test                  # unit tests (grammar, front matter, case filters, globs, paths, the library's
-                            # requests, arguments) and tests/cli.rs (the program as a process)
+                            # requests, arguments, reading the layout, diff) and tests/cli.rs (the program as a process)
 cargo clippy --all-targets
 cargo fmt                   # rustfmt.toml: 120 columns
 cargo run -- write "../fsm-editor-vscode/examples/*.fsm" -t sml -o <dir>
+cargo run -- diff old.fsm new.fsm [--json]
 ```
 
 The WebAssembly module's crate type is given on the command line, not in `Cargo.toml`: a library built as rlib and cdylib at once gets no LTO (1.38 MB instead of 1.24 MB). The `wasm` profile is the release one at `opt-level = "s"`.
@@ -26,10 +27,13 @@ The library (`src/`) holds the pipeline; the program (`src/cli/`) holds the comm
 | --- | --- |
 | `cli/main.rs` | `fsm <command>`: dispatch, `-h`, `-v`, usage errors (exit 2). One module per command. |
 | `cli/write.rs` | `fsm write`: arguments, glob expansion, template lookup (a bare name: `templates/<name>.jinja` next to the executable), writing the files, `--check`. |
+| `cli/diff.rs` | `fsm diff`: arguments, reading the two files (a missing or empty one is a side without a machine), printing text or JSON. |
 | `lib.rs` | The pipeline without a file system: a JSON request (the `.fsm` texts, the template's text) → a JSON response (files, issues, exit code), and the WebAssembly interface (`fsm_alloc`, `fsm_generate`, `fsm_free`). Documented in `README.md`, "WebAssembly". |
 | `generate.rs` | Loading the machines and their submachines through a reader callback, validating, rendering. |
-| `xml.rs`, `xmi.rs` | Reading `.fsm` files (without the layout) and the model hash. |
-| `model.rs` | `FsmModel`; `ModelIndex` designates vertices by index in `model.vertices`. |
+| `xml.rs`, `xmi.rs` | Reading `.fsm` files, layout included (`fromXmi`'s rules, JavaScript's number parsing, default places, `normalizeModel`'s groups and self-loops), and the model hash. |
+| `model.rs` | `FsmModel`, with the layout (bounds, region layout and sizes, bend points, label offsets, colors, groups) and comment texts and anchors, which only `diff` uses; `ModelIndex` designates vertices by index in `model.vertices`. |
+| `geometry.rs` | Diagram geometry computed as the editors' JavaScript does: `n1`, `Math.round`, V8's `Math.hypot`, `polyline_mid`, `center`. |
+| `diff.rs` | `fsm diff`: pairing elements by xmi:id (`pair`), their model and drawing properties as named values (`*_properties`, `*_layout`), the statuses, labels and sentences, the text and JSON output. Kept apart so a three-way merge can reuse the pairing and the properties. |
 | `expressions.rs` | The text grammar. |
 | `validation.rs` | |
 | `codemodel.rs` | `to_code_model()`. Serialized with serde in camelCase. |
@@ -42,6 +46,8 @@ The library (`src/`) holds the pipeline; the program (`src/cli/`) holds the comm
 - **The editors:** reading `.fsm` files, the text grammar and validation (rules and messages) follow the editions of FSM Editor, whose reference is fsm-editor-vscode (`src/xmi.ts`, `media/expressions.js`, `src/validation.ts`): a change there needs the same change here, and the reverse.
 - **The code model** is documented in fsm-editor-vscode's `docs/CODEGEN.md` ("Code model reference"); keep it in step with `codemodel.rs` and `tables.rs`.
 - **Native and WebAssembly alike:** the library must give the program's files and messages, byte for byte (`tests/cli.rs` checks one case). What `lib.rs::run` calls must not touch the file system or the process: it reads through `generate`'s callback and gets the current folder from `paths::set_cwd` (`paths::expand_glob` is the program's only).
+- **Reading the layout** must give the model `fromXmi` gives, layout included: compare the two on many files (models dumped as JSON from both) after changing `xmi.rs` or `geometry.rs`.
+- **`fsm diff`'s labels, sentences and JSON** are documented in `README.md` ("fsm diff") and other tools show them: keep them stable, and update the README when they change.
 - **Output:** a change that alters generated files, messages or exit codes is a change of behavior: say so. Otherwise compare `fsm write` on many models before and after.
 - Templates are Jinja only (`.jinja`): `.hbs` is refused with a pointer to the README's "Coming from the Handlebars templates".
 - Templates are data: no filter or function may run code or read files from the template's repository.
