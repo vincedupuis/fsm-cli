@@ -8,7 +8,8 @@
 //! of the state machine itself; a submachine state that references this machine
 //! exposes them through `ConnectionPointRef` vertices placed on its border.
 //!
-//! Only what validation and code generation need is kept: no layout.
+//! The layout is kept too (positions, sizes, routes, colors, groups), as `fromXmi` in
+//! fsm-editor-vscode/src/xmi.ts reads it: validation and code generation ignore it, `fsm diff` compares it.
 
 use std::collections::HashMap;
 
@@ -126,6 +127,60 @@ impl MachineKind {
 pub struct Region {
     pub id: String,
     pub name: String,
+    /// Layout, regions of a state: extent along the state's region layout (height when stacked, width side by
+    /// side), from the region's shape. None without a shape.
+    pub size: Option<f64>,
+}
+
+impl Region {
+    pub fn new(id: &str, name: &str) -> Region {
+        Region { id: id.to_string(), name: name.to_string(), size: None }
+    }
+}
+
+/// How a state's regions are laid out: side by side, or stacked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegionLayout {
+    Horizontal,
+    Vertical,
+}
+
+impl RegionLayout {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RegionLayout::Horizontal => "horizontal",
+            RegionLayout::Vertical => "vertical",
+        }
+    }
+}
+
+/// Items of a state or transition that can have their own color, in file order (`ITEM_COLOR_KEYS` of the editors).
+pub const ITEM_COLOR_KEYS: [&str; 11] = [
+    "background",
+    "entry",
+    "exit",
+    "doActivity",
+    "deferrable",
+    "invariant",
+    "triggers",
+    "guard",
+    "effect",
+    "precondition",
+    "postcondition",
+];
+
+/// A point of the diagram.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Diagram colors, `#rrggbb`: the element's own (empty when none), and per item, in `ITEM_COLOR_KEYS` order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Colors {
+    pub color: String,
+    pub items: Vec<(&'static str, String)>,
 }
 
 /// A vertex. Texts are empty when absent.
@@ -147,6 +202,19 @@ pub struct Vertex {
     /// Connection point reference: xmi:id of the entry/exit point, inside the submachine's file.
     pub point_ref: String,
     pub point_kind: PointKind,
+    /// Comment: its text (not trimmed) and the ids of the elements it is attached to.
+    pub text: String,
+    pub anchors: Vec<String>,
+    /// Layout: the shape's bounds, absolute (NaN until placed: the reader gives every vertex a place).
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    /// Layout of a state with regions, from its first two region shapes.
+    pub region_layout: Option<RegionLayout>,
+    pub colors: Colors,
+    /// Id of the group the vertex belongs to (empty when none): its members move together in the diagram.
+    pub group: String,
 }
 
 impl Vertex {
@@ -166,6 +234,15 @@ impl Vertex {
             stereotype: String::new(),
             point_ref: String::new(),
             point_kind: PointKind::Entry,
+            text: String::new(),
+            anchors: Vec::new(),
+            x: f64::NAN,
+            y: f64::NAN,
+            w: 0.0,
+            h: 0.0,
+            region_layout: None,
+            colors: Colors::default(),
+            group: String::new(),
         }
     }
 }
@@ -182,6 +259,11 @@ pub struct Transition {
     /// Protocol state machines only.
     pub precondition: String,
     pub postcondition: String,
+    /// Layout: the bend points, absolute (empty for a straight line).
+    pub points: Vec<Point>,
+    /// Layout: where the label is, from the middle of the line (None: the default place).
+    pub label_offset: Option<Point>,
+    pub colors: Colors,
 }
 
 #[derive(Debug, Clone)]

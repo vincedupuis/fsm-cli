@@ -762,7 +762,7 @@ mod tests {
             kind: MachineKind::Behavioral,
             context: String::new(),
             documentation: String::new(),
-            regions: vec![Region { id: "r".into(), name: String::new() }],
+            regions: vec![Region::new("r", "")],
             vertices: vec![
                 Vertex::new("A", VertexType::State, "A", "r"),
                 Vertex::new("B", VertexType::State, "B", "r"),
@@ -786,6 +786,9 @@ mod tests {
             effect: String::new(),
             precondition: String::new(),
             postcondition: String::new(),
+            points: Vec::new(),
+            label_offset: None,
+            colors: Default::default(),
         });
     }
 

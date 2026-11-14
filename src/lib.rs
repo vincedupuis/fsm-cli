@@ -11,14 +11,15 @@
 mod codemodel;
 mod expressions;
 pub mod generate;
+pub mod geometry;
 mod languages;
-mod model;
+pub mod model;
 pub mod paths;
 pub mod render;
 mod sha256;
 mod tables;
 mod validation;
-mod xmi;
+pub mod xmi;
 mod xml;
 
 use std::collections::HashMap;
