@@ -1,4 +1,5 @@
-//! The `fsm` program as a process: commands, exit codes, and `fsm write` giving the files the library gives.
+//! The `fsm` program as a process: commands, exit codes, `fsm write` giving the files the library gives, and
+//! `fsm diff`'s output.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -104,5 +105,111 @@ fn write_and_check() {
     let o = fsm(&dir, &["write", "Lamp.fsm", "-t", "ts", "-o", "out", "--check"]);
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).ends_with("fsm: 2 generated files are missing or out of date.\n"), "{}", stderr(&o));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+#[test]
+fn diff_command_line() {
+    let dir = folder("diff-args");
+    std::fs::write(dir.join("Lamp.fsm"), MACHINE).unwrap();
+    for args in [&["diff"][..], &["diff", "--help"], &["diff", "a", "b", "-h"]] {
+        let o = fsm(&dir, args);
+        assert_eq!(o.status.code(), Some(0));
+        assert!(stdout(&o).starts_with("Usage: fsm diff <old.fsm> <new.fsm> [--json]"));
+    }
+    assert!(stdout(&fsm(&dir, &["--help"])).contains("\n  diff     Compares two versions of a state machine.\n"));
+    for args in [&["diff", "Lamp.fsm"][..], &["diff", "Lamp.fsm", "Lamp.fsm", "Lamp.fsm"], &["diff", "--json"]] {
+        let o = fsm(&dir, args);
+        assert_eq!(o.status.code(), Some(2));
+        assert_eq!(
+            stderr(&o),
+            "fsm: Give two .fsm files: the old version and the new one.\nRun 'fsm diff --help' for usage.\n"
+        );
+    }
+    let o = fsm(&dir, &["diff", "Lamp.fsm", "Lamp.fsm", "--color"]);
+    assert_eq!(
+        (o.status.code(), stderr(&o)),
+        (Some(2), "fsm: Unknown option --color.\nRun 'fsm diff --help' for usage.\n".to_string())
+    );
+
+    // Files that can't be compared: exit 1, nothing on stdout.
+    std::fs::write(dir.join("notes.txt"), "not xml").unwrap();
+    std::fs::create_dir_all(dir.join("folder.fsm")).unwrap();
+    for (args, message) in [
+        (&["diff", "Lamp.fsm", "notes.txt"][..], "fsm: notes.txt is not a valid state machine file: "),
+        (&["diff", "folder.fsm", "Lamp.fsm"], "fsm: folder.fsm does not exist or cannot be read.\n"),
+        (&["diff", "gone.fsm", "lost.fsm"], "fsm: gone.fsm does not exist or cannot be read.\n"),
+    ] {
+        let o = fsm(&dir, args);
+        assert_eq!(o.status.code(), Some(1), "{args:?}");
+        assert!(stderr(&o).starts_with(message), "{}", stderr(&o));
+        assert_eq!(stdout(&o), "");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn diff_output() {
+    let dir = folder("diff-out");
+    std::fs::write(dir.join("Lamp.fsm"), MACHINE).unwrap();
+    let lit = MACHINE
+        .replace("name=\"On\"", "name=\"Lit\"")
+        .replace("<trigger xmi:id=\"g1\" name=\"press\"/>", "<trigger xmi:id=\"g1\" name=\"press\"/><guard xmi:id=\"g\"><specification><body>ready()</body></specification></guard>")
+        .replace("<transition xmi:type=\"uml:Transition\" xmi:id=\"t2\"", "<subvertex xmi:type=\"uml:FinalState\" xmi:id=\"F\"/><transition xmi:type=\"uml:Transition\" xmi:id=\"t2\"");
+    std::fs::write(dir.join("Lit.fsm"), &lit).unwrap();
+    std::fs::write(dir.join("Empty.fsm"), "").unwrap();
+
+    let o = fsm(&dir, &["diff", "Lamp.fsm", "Lit.fsm"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(
+        stdout(&o),
+        "Lit.fsm\n  ~ state On renamed to Lit\n  ~ transition Off → On on press: guard added [ready()]\n  + final state\n"
+    );
+    let o = fsm(&dir, &["diff", "Lamp.fsm", "Lamp.fsm"]);
+    assert_eq!((o.status.code(), stdout(&o)), (Some(0), "Lamp.fsm\n  no differences\n".to_string()));
+
+    // A new file: everything added. A deleted one: everything removed.
+    let o = fsm(&dir, &["diff", "Empty.fsm", "Lamp.fsm"]);
+    assert_eq!(o.status.code(), Some(0));
+    assert!(
+        stdout(&o).starts_with("Lamp.fsm\n  + machine Lamp\n  + initial to Off\n  + state Off\n"),
+        "{}",
+        stdout(&o)
+    );
+    let o = fsm(&dir, &["diff", "Lamp.fsm", "Deleted.fsm"]);
+    assert_eq!(o.status.code(), Some(0));
+    assert!(stdout(&o).starts_with("Lamp.fsm\n  - machine Lamp\n"), "{}", stdout(&o));
+
+    // JSON: one document, keys in a fixed order.
+    let o = fsm(&dir, &["diff", "--json", "Lamp.fsm", "Lit.fsm"]);
+    assert_eq!(o.status.code(), Some(0));
+    let text = stdout(&o);
+    let doc: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(doc["counts"], serde_json::json!({ "added": 1, "removed": 0, "changed": 2, "layout": 0 }));
+    let elements = doc["elements"].as_array().unwrap();
+    assert_eq!(elements.len(), 3);
+    assert_eq!(
+        elements[1],
+        serde_json::json!({ "id": "t1", "element": "transition", "status": "changed", "label": "Transition Off → On on press",
+            "moved": false, "changes": [{ "property": "guard", "before": "", "after": "ready()" }] })
+    );
+    // The keys, in the order they first appear.
+    let mut keys: Vec<&str> = Vec::new();
+    for part in text.split("\":").map(|p| p.rsplit('"').next().unwrap()).take(text.matches("\":").count()) {
+        if !keys.contains(&part) {
+            keys.push(part);
+        }
+    }
+    assert_eq!(
+        keys,
+        [
+            "elements", "id", "element", "status", "label", "moved", "changes", "property", "before", "after",
+            "counts", "added", "removed", "changed", "layout"
+        ]
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

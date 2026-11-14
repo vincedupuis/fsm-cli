@@ -1,5 +1,6 @@
 //! `fsm`, the command-line tool of FSM Editor: `fsm <command> [options]`. One module per command.
 
+mod diff;
 mod write;
 
 use std::process::ExitCode;
@@ -10,6 +11,7 @@ The command-line tool of FSM Editor, for UML state machines (.fsm files).
 
 Commands:
   write    Generates code from state machines with a Jinja template.
+  diff     Compares two versions of a state machine.
 
 Run 'fsm <command> --help' for the options of a command.
 
@@ -20,7 +22,7 @@ Options:
 /// Why the program stops.
 #[derive(Debug, PartialEq)]
 pub enum Failure {
-    /// Bad usage: exit code 2. `command` names the help that explains it (`write`, or "" for `fsm --help`).
+    /// Bad usage: exit code 2. `command` names the help that explains it (`write`, `diff`, or "" for `fsm --help`).
     Usage { message: String, command: &'static str },
     /// Exit code 1.
     Error(String),
@@ -39,6 +41,7 @@ fn run(argv: &[String]) -> Result<(), Failure> {
     let args = &argv[1..];
     match command.as_str() {
         "write" => write::main(args),
+        "diff" => diff::main(args),
         "-h" | "--help" => {
             println!("{USAGE}");
             Ok(())

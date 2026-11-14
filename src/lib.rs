@@ -9,6 +9,7 @@
 //! by the response, `fsm_free(ptr, len + 4)` frees that buffer. See README.md, "WebAssembly".
 
 mod codemodel;
+pub mod diff;
 mod expressions;
 pub mod generate;
 pub mod geometry;
