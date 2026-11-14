@@ -23,7 +23,7 @@ The merged file is always a valid .fsm file, written as the editors write it,
 without conflict markers; it may be ours or theirs. An empty or missing base
 counts as a file without a machine. The report goes to stderr: the conflicts
 (✕), the layout kept from ours (·), and the validation issues the merge
-caused (!).
+caused (!), whose errors make it fail like a conflict.
 
 As a Git merge driver: fsm merge %O %A %B -o %A
 
@@ -32,7 +32,8 @@ Options:
       --json        Print the report as one JSON document on stdout instead.
   -h, --help        Show this help.
 
-Exit codes: 0 merged, 1 conflicts remain (ours kept) or a file can't be read,
+Exit codes: 0 merged, 1 conflicts remain (ours kept) or the merge caused
+validation errors (the file is written either way), or a file can't be read,
 isn't a state machine or the files can't be merged (nothing written), 2 bad
 usage.";
 
@@ -138,7 +139,8 @@ fn run(args: Args) -> Result<(), Failure> {
     } else {
         eprint!("{}", result.to_text(&display(Path::new(&out))));
     }
-    if result.clean() { Ok(()) } else { Err(Failure::Conflicts) }
+    // Conflicts, and validation errors the merge caused (a machine that no longer generates code), need a review.
+    if result.succeeded() { Ok(()) } else { Err(Failure::Conflicts) }
 }
 
 #[cfg(test)]

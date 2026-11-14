@@ -1506,12 +1506,27 @@ impl Merge {
         self.conflicts.is_empty()
     }
 
-    /// The report: `<header>: N changes merged, M conflicts`, a line per conflict (`✕`) with ours' and theirs'
-    /// values or what the deletion takes, a line per drawing property changed on both sides (`· layout:`), and the
-    /// validation issues the merge caused (`!`).
+    /// The validation errors the merge caused: the merged machine no longer generates code.
+    pub fn errors(&self) -> usize {
+        self.issues.iter().filter(|i| i.severity == "error").count()
+    }
+
+    /// Whether the merge needs no review: no conflict, and no validation error caused by the merge (`fsm merge`'s
+    /// exit code 0).
+    pub fn succeeded(&self) -> bool {
+        self.clean() && self.errors() == 0
+    }
+
+    /// The report: `<header>: N changes merged, M conflicts` (then `, E errors` when the merge caused validation
+    /// errors), a line per conflict (`✕`) with ours' and theirs' values or what the deletion takes, a line per drawing
+    /// property changed on both sides (`· layout:`), and the validation issues the merge caused (`!`).
     pub fn to_text(&self, header: &str) -> String {
+        let errors = match self.errors() {
+            0 => String::new(),
+            n => format!(", {}", plural(n, "error", "errors")),
+        };
         let mut out = format!(
-            "{header}: {} merged, {}\n",
+            "{header}: {} merged, {}{errors}\n",
             plural(self.merged.len(), "change", "changes"),
             plural(self.conflicts.len(), "conflict", "conflicts")
         );
@@ -1556,7 +1571,8 @@ impl Merge {
         out
     }
 
-    /// The JSON output: `{ "merged", "conflicts", "layout", "issues", "counts" }`, pretty-printed, keys in a fixed order.
+    /// The JSON output: `{ "merged", "conflicts", "layout", "issues", "counts" }`, pretty-printed, keys in a fixed order;
+    /// `counts.errors` is the number of issues of severity error.
     pub fn to_json(&self) -> String {
         struct Doc<'a>(&'a Merge);
         struct List<'a, T>(&'a [T], fn(&T) -> Value);
@@ -1619,6 +1635,7 @@ impl Merge {
                     ("conflicts", Value::Number(m.conflicts.len() as f64)),
                     ("layout", Value::Number(m.layout.len() as f64)),
                     ("issues", Value::Number(m.issues.len() as f64)),
+                    ("errors", Value::Number(m.errors() as f64)),
                 ]);
                 let mut map = s.serialize_map(Some(5))?;
                 map.serialize_entry("merged", &List(&m.merged, merged))?;

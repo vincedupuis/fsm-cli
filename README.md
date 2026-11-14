@@ -232,15 +232,15 @@ Merges two versions of a state machine, `ours` and `theirs`, made from a common 
 - an element deleted on one side and changed on the other, or given new contents, new transitions or transitions moved to it: kept deleted when ours deleted it, the other side's changes and additions left out; kept with its contents and transitions, as ours has them, when theirs deleted it. A region removed from a state counts as deleted the same way;
 - two states moved into each other: the owners of ours are kept.
 
-**Validation.** The merged machine is validated as `fsm write` validates machines, and the issues that neither `ours` nor `theirs` has (same element, same message) are reported as caused by the merge: for example a state given an unguarded completion transition on each side. They don't change the exit code.
+**Validation.** The merged machine is validated as `fsm write` validates machines, and the issues that neither `ours` nor `theirs` has (same element, same message) are reported as caused by the merge: for example a state given an unguarded completion transition on each side (a warning), or an initial pseudostate given a transition on each side (an error). An error caused by the merge makes `fsm merge` fail like a conflict (exit code `1`): the merged machine would no longer generate code. The file is written all the same, valid and without markers. Warnings don't change the exit code.
 
 **Files.** An empty (white space or a byte order mark only) or missing `base` is a file without a machine: the two sides then added everything, and what they hold alike is kept as it is. `ours` and `theirs` must be state machines with the same machine id. Files that can't be merged at all (unreadable, not a state machine, two different machines) are an error, and nothing is written.
 
-**Exit codes:** `0` merged without a conflict, `1` conflicts remain (the file is written, with ours' choices) or the files can't be merged (nothing written), `2` bad usage.
+**Exit codes:** `0` merged without a conflict or a validation error caused by the merge, `1` conflicts remain (the file is written, with ours' choices), the merge caused validation errors (the file is written) or the files can't be merged (nothing written), `2` bad usage.
 
 #### Report
 
-On stderr: the output file and the counts, then a line per conflict (`✕`) with ours' and theirs' values or what the deletion took, a line per element whose layout both sides changed (`·`), and a line per issue the merge caused (`!`). Elements are named with [`fsm diff`'s labels](#labels), as they were in the base (as a side has them for an element it added).
+On stderr: the output file and the counts (followed by `, N errors` when the merge caused validation errors, the reason for exit code `1` without a conflict), then a line per conflict (`✕`) with ours' and theirs' values or what the deletion took, a line per element whose layout both sides changed (`·`), and a line per issue the merge caused (`!`). Elements are named with [`fsm diff`'s labels](#labels), as they were in the base (as a side has them for an element it added).
 
 ```
 MediaPlayer.fsm: 9 changes merged, 3 conflicts
@@ -273,7 +273,7 @@ MediaPlayer.fsm: 9 changes merged, 3 conflicts
   - `kept`: whether the element is in the merged file.
 - `layout`: the elements whose drawing properties both sides changed, each `{ "id", "element", "label", "properties" }` (`fsm diff`'s drawing property names: `position`, `size`, `regionLayout`, `regionSizes`, `points`, `labelOffset`, `color`, `itemColors`, `group`).
 - `issues`: the issues the merge caused, each `{ "id", "label", "severity", "message" }` (`id` empty for the machine).
-- `counts`: `merged`, `conflicts`, `layout`, `issues`.
+- `counts`: `merged`, `conflicts`, `layout`, `issues`, and `errors`, the issues of severity `error`: exit code `1` means `conflicts` or `errors` isn't 0.
 
 ```json
 {
@@ -290,7 +290,7 @@ MediaPlayer.fsm: 9 changes merged, 3 conflicts
   ],
   "layout": [],
   "issues": [],
-  "counts": { "merged": 1, "conflicts": 1, "layout": 0, "issues": 0 }
+  "counts": { "merged": 1, "conflicts": 1, "layout": 0, "issues": 0, "errors": 0 }
 }
 ```
 
@@ -298,7 +298,7 @@ MediaPlayer.fsm: 9 changes merged, 3 conflicts
 
 #### As a Git merge driver
 
-Git can merge `.fsm` files with `fsm merge` instead of merging their text. Git calls a merge driver with the base, ours and theirs as temporary files and takes the result from the ours file, so the command line is `fsm merge %O %A %B -o %A`. With exit code `0` Git completes the merge by itself; with `1` it stops and lists the file as conflicted, and the file holds the merge with ours' choices, without conflict markers, so it opens in the editors as it is: review the report, change what needs changing, then `git add` it. Where there is no common ancestor, Git passes an empty base.
+Git can merge `.fsm` files with `fsm merge` instead of merging their text. Git calls a merge driver with the base, ours and theirs as temporary files and takes the result from the ours file, so the command line is `fsm merge %O %A %B -o %A`. With exit code `0` Git completes the merge by itself; with `1` (conflicts, or validation errors the merge caused) it stops and lists the file as conflicted, and the file holds the merge with ours' choices, without conflict markers, so it opens in the editors as it is: review the report, change what needs changing, then `git add` it. Where there is no common ancestor, Git passes an empty base.
 
 To set it up (not done by FSM Editor), declare the driver in a Git configuration file:
 

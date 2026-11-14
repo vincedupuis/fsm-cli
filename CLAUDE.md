@@ -30,7 +30,7 @@ The library (`src/`) holds the pipeline; the program (`src/cli/`) holds the comm
 | `cli/main.rs` | `fsm <command>`: dispatch, `-h`, `-v`, usage errors (exit 2). One module per command. |
 | `cli/write.rs` | `fsm write`: arguments, glob expansion, template lookup (a bare name: `templates/<name>.jinja` next to the executable), writing the files, `--check`. |
 | `cli/diff.rs` | `fsm diff`: arguments, reading the two files (a missing or empty one is a side without a machine), printing text or JSON. |
-| `cli/merge.rs` | `fsm merge`: arguments, reading the three files (all of them before writing: the output may be one; a missing or empty base is no machine), writing the result in one go, the report on stderr or JSON on stdout, exit 1 on conflicts. |
+| `cli/merge.rs` | `fsm merge`: arguments, reading the three files (all of them before writing: the output may be one; a missing or empty base is no machine), writing the result in one go, the report on stderr or JSON on stdout, exit 1 on conflicts and on validation errors the merge caused. |
 | `lib.rs` | The pipeline without a file system: a JSON request (the `.fsm` texts, the template's text) → a JSON response (files, issues, exit code), and the WebAssembly interface (`fsm_alloc`, `fsm_generate`, `fsm_free`). Documented in `README.md`, "WebAssembly". |
 | `generate.rs` | Loading the machines and their submachines through a reader callback, validating, rendering. |
 | `xml.rs`, `xmi.rs` | Reading `.fsm` files, layout included (`fromXmi`'s rules, JavaScript's number parsing, default places, `normalizeModel`'s groups and self-loops), and the model hash; `xml.rs` also writes XML (`writeXml`). |

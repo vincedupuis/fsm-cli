@@ -330,7 +330,10 @@ fn merge_over_ours_as_git_calls_it() {
     assert_eq!((o.status.code(), stderr(&o)), (Some(1), String::new()));
     let text = stdout(&o);
     let doc: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(doc["counts"], serde_json::json!({ "merged": 1, "conflicts": 1, "layout": 0, "issues": 0 }));
+    assert_eq!(
+        doc["counts"],
+        serde_json::json!({ "merged": 1, "conflicts": 1, "layout": 0, "issues": 0, "errors": 0 })
+    );
     assert_eq!(
         doc["conflicts"][0],
         serde_json::json!({ "id": "t1", "element": "transition", "label": "Transition Off → On on press", "conflict": "property",
@@ -368,8 +371,47 @@ fn merge_over_ours_as_git_calls_it() {
             "kept",
             "layout",
             "issues",
-            "counts"
+            "counts",
+            "errors"
         ]
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_fails_when_it_makes_the_machine_invalid() {
+    let dir = folder("merge-invalid");
+    let write = |name: &str, text: &str| std::fs::write(dir.join(name), text).unwrap();
+    let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap();
+    // The initial pseudostate has no transition in the base; ours gives it one to Off, theirs one to On. Each side is
+    // valid on that point, the merge has both: an error that neither side has.
+    let t0 = "<transition xmi:type=\"uml:Transition\" xmi:id=\"t0\" source=\"i\" target=\"Off\"/>";
+    let t5 = "<transition xmi:type=\"uml:Transition\" xmi:id=\"t5\" source=\"i\" target=\"On\"/>";
+    let base = edited(&[(t0, "")]);
+    write("Base.fsm", &base);
+    write("Ours.fsm", MACHINE);
+    write("Theirs.fsm", &edited(&[(t0, t5)]));
+    let o = fsm(&dir, &["merge", "Base.fsm", "Ours.fsm", "Theirs.fsm", "-o", "Ours.fsm"]);
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    assert_eq!(
+        stderr(&o),
+        "Ours.fsm: 2 changes merged, 0 conflicts, 1 error\n  ! initial to Off: error: An initial pseudostate must have exactly one outgoing transition.\n"
+    );
+    // The merged file is written all the same, with both transitions.
+    let merged = fsm_cli::xmi::from_xmi(&read("Ours.fsm")).unwrap();
+    assert_eq!(merged.transitions.iter().filter(|t| t.source == "i").count(), 2);
+    // JSON: counts.errors says why the exit code is 1.
+    write("Ours.fsm", MACHINE);
+    let o = fsm(&dir, &["merge", "--json", "Base.fsm", "Ours.fsm", "Theirs.fsm", "-o", "M.fsm"]);
+    assert_eq!(o.status.code(), Some(1));
+    let doc: serde_json::Value = serde_json::from_str(&stdout(&o)).unwrap();
+    assert_eq!(
+        doc["counts"],
+        serde_json::json!({ "merged": 2, "conflicts": 0, "layout": 0, "issues": 1, "errors": 1 })
+    );
+    assert_eq!(doc["issues"][0]["severity"], "error");
+    // A side alone merges cleanly.
+    let o = fsm(&dir, &["merge", "Base.fsm", "Base.fsm", "Theirs.fsm", "-o", "M.fsm"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
     let _ = std::fs::remove_dir_all(&dir);
 }
