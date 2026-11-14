@@ -1,7 +1,7 @@
 //! The code model as nested transition tables, for state machine frameworks
 //! whose transitions stay inside one table (Boost.SML, Boost.MSM, ...): a
 //! table per composite state holding the transitions between its substates,
-//! and a table for the machine. A port of fsm-editor-vscode/src/codegen/tables.ts.
+//! and a table for the machine.
 //!
 //! Such frameworks can't express what UML transitions often do: leave a
 //! composite state from one of its substates, enter a nested state directly,

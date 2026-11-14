@@ -27,7 +27,19 @@ pub fn resolve(base: &Path, p: &str) -> PathBuf {
     out
 }
 
+thread_local! {
+    /// The current folder when there is no process (WebAssembly): set by `set_cwd`.
+    static CWD: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+pub fn set_cwd(dir: Option<PathBuf>) {
+    CWD.with(|c| *c.borrow_mut() = dir);
+}
+
 pub fn cwd() -> PathBuf {
+    if let Some(dir) = CWD.with(|c| c.borrow().clone()) {
+        return dir;
+    }
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
 }
 

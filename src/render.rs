@@ -53,6 +53,16 @@ impl TemplateError {
     }
 }
 
+/// Why a template named `name` is refused, when it is a Handlebars one (`.hbs`): only Jinja templates are read.
+pub fn refuse_handlebars(name: &str) -> Option<String> {
+    name.to_lowercase().ends_with(".hbs").then(|| {
+        format!(
+            "{name} is a Handlebars template: they are no longer supported. Convert it to Jinja (.jinja), see \
+             https://github.com/vincedupuis/fsm-cli#coming-from-the-handlebars-templates"
+        )
+    })
+}
+
 pub fn parse_template(text: &str) -> Result<Template, TemplateError> {
     let src = text.strip_prefix('\u{feff}').unwrap_or(text).replace("\r\n", "\n").replace('\r', "\n");
     let (config, body, body_line) = match split_front_matter(&src) {
@@ -604,6 +614,15 @@ mod tests {
         assert!(parse_front_matter("a: 1\n  b: 2").is_err());
         let no_front = parse_template("--- not front matter\n").unwrap();
         assert_eq!(no_front.body_line, 1);
+    }
+
+    #[test]
+    fn handlebars_refused() {
+        assert!(
+            refuse_handlebars("templates/ts.HBS").unwrap().starts_with("templates/ts.HBS is a Handlebars template")
+        );
+        assert_eq!(refuse_handlebars("ts.jinja"), None);
+        assert_eq!(refuse_handlebars("ts"), None);
     }
 
     #[test]

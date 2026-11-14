@@ -1,7 +1,7 @@
 //! Reads state machine files: XMI 2.5.1 holding a UML 2.5.1 model (plus a UML
 //! DI diagram, which code generation doesn't need). The same reading rules as
-//! `fromXmi` in fsm-editor-vscode/src/xmi.ts, without the layout, and its
-//! `modelHash`.
+//! `fromXmi` in fsm-editor-vscode/src/xmi.ts, without the layout, and the
+//! model hash of a file.
 
 use std::collections::HashMap;
 

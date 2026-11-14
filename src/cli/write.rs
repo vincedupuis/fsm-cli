@@ -1,30 +1,15 @@
-//! Command-line interface: `fsm-generator <files...> --template <template>`.
-//!
-//! Reads UML state machines (`.fsm` files: XMI 2.5.1), validates them, builds
-//! their code models (the same as the `fsm` CLI of fsm-editor-vscode) and
-//! renders them with a Jinja template (MiniJinja).
-
-mod codemodel;
-mod expressions;
-mod generate;
-mod languages;
-mod model;
-mod paths;
-mod render;
-mod sha256;
-mod tables;
-mod validation;
-mod xmi;
-mod xml;
+//! `fsm write <files...> --template <template>`: reads UML state machines (`.fsm` files: XMI 2.5.1), validates them,
+//! builds their code models and renders them with a Jinja template (MiniJinja).
 
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 
-use generate::{FileIssue, GenerateError, GeneratedFile, generate};
-use paths::{absolute, display, expand_glob, slash};
-use render::{Renderer, TemplateError, parse_template};
+use fsm_cli::generate::{FileIssue, GenerateError, GeneratedFile, generate, line_of};
+use fsm_cli::paths::{absolute, display, expand_glob, slash};
+use fsm_cli::render::{Renderer, TemplateError, parse_template, refuse_handlebars};
 
-const USAGE: &str = "Usage: fsm-generator <files...> --template <template> [--out <folder>] [options]
+use crate::Failure;
+
+const USAGE: &str = "Usage: fsm write <files...> --template <template> [--out <folder>] [options]
 
 Generates code from UML state machines (.fsm files) with a Jinja template.
 The machines are validated first: nothing is generated when they have errors.
@@ -40,19 +25,15 @@ Options:
                          that are missing, or out of date because they don't
                          hold the model hash of their .fsm file any more.
   -h, --help             Show this help.
-  -v, --version          Show the version.
 
 Exit codes: 0 success, 1 errors in the state machines or the template (with
 --check, also files missing or out of date), 2 bad usage.";
 
-/// Why the program stops.
-enum Failure {
-    /// Bad usage: exit code 2.
-    Usage(String),
-    /// Exit code 1.
-    Error(String),
+fn usage(message: String) -> Failure {
+    Failure::Usage { message, command: "write" }
 }
 
+#[derive(Debug, PartialEq)]
 struct Args {
     files: Vec<String>,
     template: String,
@@ -60,6 +41,7 @@ struct Args {
     check: bool,
 }
 
+#[derive(Debug, PartialEq)]
 enum Command {
     Help,
     Version,
@@ -73,7 +55,7 @@ fn parse_args(argv: &[String]) -> Result<Command, Failure> {
     let mut check = false;
     let value = |i: usize, flag: &str| match argv.get(i + 1) {
         Some(v) if !v.starts_with('-') => Ok(v.clone()),
-        _ => Err(Failure::Usage(format!("{flag} needs a value."))),
+        _ => Err(usage(format!("{flag} needs a value."))),
     };
     let mut i = 0;
     while i < argv.len() {
@@ -106,7 +88,7 @@ fn parse_args(argv: &[String]) -> Result<Command, Failure> {
             "--check" => check = true,
             _ => {
                 if a.starts_with('-') && a != "-" {
-                    return Err(Failure::Usage(format!("Unknown option {a}.")));
+                    return Err(usage(format!("Unknown option {a}.")));
                 }
                 files.push(a.clone());
             }
@@ -115,8 +97,8 @@ fn parse_args(argv: &[String]) -> Result<Command, Failure> {
     }
     match (files.is_empty(), template) {
         (true, None) => Ok(Command::Help),
-        (true, Some(_)) => Err(Failure::Usage("No .fsm files given.".to_string())),
-        (false, None) => Err(Failure::Usage("Missing --template.".to_string())),
+        (true, Some(_)) => Err(usage("No .fsm files given.".to_string())),
+        (false, None) => Err(usage("Missing --template.".to_string())),
         (false, Some(template)) => Ok(Command::Run(Args { files, template, out, check })),
     }
 }
@@ -127,7 +109,7 @@ fn sources(patterns: &[String]) -> Result<Vec<PathBuf>, Failure> {
     for p in patterns {
         let found = expand_glob(p);
         if found.is_empty() {
-            return Err(Failure::Usage(format!("No files match '{p}'.")));
+            return Err(usage(format!("No files match '{p}'.")));
         }
         for f in found {
             if !files.contains(&f) {
@@ -141,6 +123,9 @@ fn sources(patterns: &[String]) -> Result<Vec<PathBuf>, Failure> {
 /// The template file: a path, or a bare name looked up in the `templates` folder next to the program (or, for
 /// `cargo run`, of the project).
 fn template_path(name: &str) -> Result<PathBuf, Failure> {
+    if let Some(message) = refuse_handlebars(name) {
+        return Err(usage(message));
+    }
     // A bare name is a file of the current folder only when there is one: a folder named like the template
     // (e.g. the output folder of `-t ts -o ts`) is not.
     if name.contains(['/', '\\']) || name.to_lowercase().ends_with(".jinja") || Path::new(name).is_file() {
@@ -159,27 +144,14 @@ fn template_path(name: &str) -> Result<PathBuf, Failure> {
         }
     }
     let looked: Vec<String> = dirs.iter().map(|d| slash(&d.to_string_lossy())).collect();
-    Err(Failure::Usage(format!("Template '{name}' not found (looked for {name}.jinja in {}).", looked.join(", "))))
-}
-
-/// Line of the element with xmi:id `id` in `file`.
-fn line_of(file: &str, id: &str) -> usize {
-    if id.is_empty() {
-        return 1;
-    }
-    match std::fs::read_to_string(absolute(file)) {
-        Ok(text) => match text.find(&format!("xmi:id=\"{id}\"")) {
-            Some(i) => text[..i].matches('\n').count() + 1,
-            None => 1,
-        },
-        Err(_) => 1,
-    }
+    Err(usage(format!("Template '{name}' not found (looked for {name}.jinja in {}).", looked.join(", "))))
 }
 
 /// `file:line: severity: message`, the format editors and CI problem matchers understand.
 fn report(issues: &[FileIssue]) {
     for i in issues {
-        eprintln!("{}:{}: {}: {}", i.file, line_of(&i.file, &i.id), i.severity.as_str(), i.message);
+        let line = std::fs::read_to_string(absolute(&i.file)).map_or(1, |text| line_of(&text, &i.id));
+        eprintln!("{}:{line}: {}: {}", i.file, i.severity.as_str(), i.message);
     }
 }
 
@@ -190,14 +162,28 @@ fn template_failure(file: &Path, e: TemplateError) -> Failure {
     }
 }
 
+pub fn main(argv: &[String]) -> Result<(), Failure> {
+    match parse_args(argv)? {
+        Command::Help => {
+            println!("{USAGE}");
+            Ok(())
+        }
+        Command::Version => {
+            crate::version();
+            Ok(())
+        }
+        Command::Run(args) => run(args),
+    }
+}
+
 fn run(args: Args) -> Result<(), Failure> {
     let tpl_file = template_path(&args.template)?;
     let text = std::fs::read_to_string(&tpl_file)
-        .map_err(|_| Failure::Usage(format!("Cannot read the template {}.", display(&tpl_file))))?;
+        .map_err(|_| usage(format!("Cannot read the template {}.", display(&tpl_file))))?;
     let template = parse_template(&text).map_err(|e| template_failure(&tpl_file, e))?;
     let name = tpl_file.file_name().map_or("template".to_string(), |n| n.to_string_lossy().into_owned());
     let renderer = Renderer::new(&template, &name).map_err(|e| template_failure(&tpl_file, e))?;
-    let result = match generate(&sources(&args.files)?, &renderer) {
+    let result = match generate(&sources(&args.files)?, &renderer, &|p| std::fs::read_to_string(p).ok()) {
         Ok(result) => result,
         Err(GenerateError::Failed { message, issues }) => {
             report(&issues);
@@ -260,28 +246,39 @@ fn check(files: &[GeneratedFile], out: &Path) -> Result<(), Failure> {
     }
 }
 
-fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    let result = parse_args(&argv).and_then(|command| match command {
-        Command::Help => {
-            println!("{USAGE}");
-            Ok(())
-        }
-        Command::Version => {
-            println!("{}", env!("CARGO_PKG_VERSION"));
-            Ok(())
-        }
-        Command::Run(args) => run(args),
-    });
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(Failure::Usage(message)) => {
-            eprintln!("fsm-generator: {message}\nRun 'fsm-generator --help' for usage.");
-            ExitCode::from(2)
-        }
-        Err(Failure::Error(message)) => {
-            eprintln!("fsm-generator: {message}");
-            ExitCode::from(1)
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn arguments() {
+        assert_eq!(parse_args(&args(&[])), Ok(Command::Help));
+        assert_eq!(parse_args(&args(&["a.fsm", "-h"])), Ok(Command::Help));
+        assert_eq!(parse_args(&args(&["-v"])), Ok(Command::Version));
+        assert_eq!(
+            parse_args(&args(&["a.fsm", "m/*.fsm", "--template=sml", "-o", "out", "--check"])),
+            Ok(Command::Run(Args {
+                files: args(&["a.fsm", "m/*.fsm"]),
+                template: "sml".to_string(),
+                out: "out".to_string(),
+                check: true
+            }))
+        );
+        assert_eq!(parse_args(&args(&["a.fsm"])), Err(usage("Missing --template.".to_string())));
+        assert_eq!(parse_args(&args(&["-t", "ts"])), Err(usage("No .fsm files given.".to_string())));
+        assert_eq!(parse_args(&args(&["a.fsm", "-t"])), Err(usage("-t needs a value.".to_string())));
+        assert_eq!(parse_args(&args(&["a.fsm", "-x"])), Err(usage("Unknown option -x.".to_string())));
+    }
+
+    #[test]
+    fn handlebars_templates() {
+        assert!(matches!(
+            template_path("ts.hbs"),
+            Err(Failure::Usage { message, command: "write" }) if message.contains("Handlebars")
+        ));
     }
 }

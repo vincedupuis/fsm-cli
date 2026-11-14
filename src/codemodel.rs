@@ -1,7 +1,6 @@
 //! Turns an FsmModel into a language-neutral code model: everything a code
-//! template needs, with the UML semantics already worked out. A port of
-//! `toCodeModel()` (fsm-editor-vscode/src/codegen/codeModel.ts), producing the
-//! same model; docs/CODEGEN.md there documents it.
+//! template needs, with the UML semantics already worked out: `to_code_model()`.
+//! FSM Editor's docs/CODEGEN.md (fsm-editor-vscode) documents it.
 //!
 //! - The state hierarchy becomes tables (states, regions, their indices).
 //! - Every transition becomes a list of steps (exit, call, enter, ...) in UML

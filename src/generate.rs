@@ -1,7 +1,7 @@
 //! The whole pipeline: read `.fsm` files (and the machines their submachine
 //! states reference), validate them, build their code models and render them
-//! with a template. The same steps and messages as
-//! fsm-editor-vscode/src/codegen/generate.ts.
+//! with a template. The files are read through a callback: the file system
+//! for the program, the request's files for the library (lib.rs).
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -63,14 +63,15 @@ struct Loaded {
     code: Option<Rc<CodeModel>>,
 }
 
-#[derive(Default)]
-struct Loader {
+struct Loader<'r> {
+    /// Reads a `.fsm` file (None: missing or unreadable).
+    read: &'r dyn Fn(&Path) -> Option<String>,
     loaded: HashMap<PathBuf, Loaded>,
     issues: Vec<FileIssue>,
     building: HashSet<PathBuf>,
 }
 
-impl Loader {
+impl Loader<'_> {
     fn check_id(path: &Path, model: &FsmModel, expected: Option<&str>) -> Result<(), GenerateError> {
         match expected {
             Some(id) if !id.is_empty() && model.id != id => {
@@ -84,8 +85,8 @@ impl Loader {
         if let Some(known) = self.loaded.get(path) {
             return Loader::check_id(path, &known.model, expected_id);
         }
-        let text = std::fs::read_to_string(path)
-            .map_err(|_| GenerateError::new(format!("{} does not exist or cannot be read.", display(path))))?;
+        let text = (self.read)(path)
+            .ok_or_else(|| GenerateError::new(format!("{} does not exist or cannot be read.", display(path))))?;
         let model = from_xmi(&text)
             .map_err(|e| GenerateError::new(format!("{} is not a valid state machine file: {e}", display(path))))?;
         Loader::check_id(path, &model, expected_id)?;
@@ -181,13 +182,28 @@ impl Loader {
     }
 }
 
+/// Line of the element with xmi:id `id` in a file's `text` (1 for the machine itself, or when it isn't found).
+pub fn line_of(text: &str, id: &str) -> usize {
+    if id.is_empty() {
+        return 1;
+    }
+    match text.find(&format!("xmi:id=\"{id}\"")) {
+        Some(i) => text[..i].matches('\n').count() + 1,
+        None => 1,
+    }
+}
+
 fn plural(n: usize) -> &'static str {
     if n > 1 { "s" } else { "" }
 }
 
 /// Generates the files of `sources` (absolute paths) with `renderer`.
-pub fn generate(sources: &[PathBuf], renderer: &Renderer) -> Result<GenerateResult, GenerateError> {
-    let mut loader = Loader::default();
+pub fn generate(
+    sources: &[PathBuf],
+    renderer: &Renderer,
+    read: &dyn Fn(&Path) -> Option<String>,
+) -> Result<GenerateResult, GenerateError> {
+    let mut loader = Loader { read, loaded: HashMap::new(), issues: Vec::new(), building: HashSet::new() };
     for s in sources {
         loader.load(s, None)?;
     }
