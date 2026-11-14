@@ -270,7 +270,7 @@ pub fn parse_xml(text: &str, canonical: &HashMap<&str, &str>) -> Result<XmlEleme
         p.skip_until("-->", "comment")?;
         p.skip_space();
     }
-    if p.i < text.len() {
+    if p.i < normalized.len() {
         return err("Content after the document element.", p.line);
     }
     Ok(resolve(root, &HashMap::new(), canonical))

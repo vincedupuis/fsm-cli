@@ -249,6 +249,17 @@ mod tests {
     }
 
     #[test]
+    fn reads_files_with_crlf_line_ends() {
+        let lf = call(request(json!({ "/w/Main.fsm": MACHINE, "sub/Sub.fsm": SUB }), "t.jinja"));
+        let crlf = call(request(
+            json!({ "/w/Main.fsm": MACHINE.replace('\n', "\r\n"), "sub/Sub.fsm": SUB.replace('\n', "\r\n") }),
+            "t.jinja",
+        ));
+        assert_eq!(crlf["exitCode"], 0, "{crlf}");
+        assert_eq!(crlf["files"], lf["files"]);
+    }
+
+    #[test]
     fn generates_from_the_request_files() {
         let r = call(request(json!({ "/w/Main.fsm": MACHINE, "sub/Sub.fsm": SUB }), "t.jinja"));
         assert_eq!(r["exitCode"], 0);
