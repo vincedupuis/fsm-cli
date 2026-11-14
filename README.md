@@ -1,6 +1,6 @@
 # fsm-cli
 
-`fsm`, the command-line tool of [FSM Editor](https://github.com/vincedupuis/fsm-editor-vscode), for its state machines (`.fsm` files: UML 2.5.1 in XMI 2.5.1). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language. `fsm diff` compares two versions of a machine, model and layout.
+`fsm`, the command-line tool of [FSM Editor](https://github.com/vincedupuis/fsm-editor-vscode), for its state machines (`.fsm` files: UML 2.5.1 in XMI 2.5.1). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language. `fsm diff` compares two versions of a machine, model and layout, and `fsm merge` merges two versions made from a common one, as a Git merge driver can.
 
 It is FSM Editor's code generator: the editions for Visual Studio and JetBrains IDEs run the `fsm` executable, and the one for VS Code runs the same code built as WebAssembly, on the desktop and on the web. It validates the machines with the editors' rules and messages, and builds the code model, the language-neutral description of a machine that templates print.
 
@@ -202,6 +202,120 @@ Values are shown on one line: line breaks become spaces.
 
 Numbers are rounded to 0.1 and written without a fraction when whole.
 
+### fsm merge
+
+```sh
+fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--json]
+```
+
+| Option | |
+| --- | --- |
+| `-o, --out <file>` | Where to write the merged machine. It may be `ours.fsm` or `theirs.fsm`: every input is read before it is written. |
+| `--json` | Print the report as one JSON document on stdout (see below) instead of text on stderr. |
+| `-h, --help` | |
+
+Merges two versions of a state machine, `ours` and `theirs`, made from a common one, the `base`: a three-way merge by `xmi:id`, property by property, with the elements and properties of [`fsm diff`](#fsm-diff). The merged file is always a valid `.fsm` file, without conflict markers, written exactly as the editors write it: opening it and saving it in an editor doesn't change it (except where the editors themselves don't keep a file as it is: some files edited by hand change each time they are saved).
+
+**Merged without a question:**
+
+- A property changed on one side only, or the same way on both, is taken.
+- Triggers, deferred events and comment anchors changed on both sides become the union: ours' list without what theirs removed, then what theirs added. A state's regions are merged the same way, by id, and their names property by property.
+- Elements added on both sides are all kept, in this order in each region: the base's elements, then ours' additions, then theirs' (generated code enters and exits regions in that order, and tries transitions in that order).
+- A deleted element takes its contents (the vertices in its regions, the points on its border), its transitions and the comments' anchors to it with it, as deleting it in the editor does.
+- The events list, the diagram ids and the region shapes are written again from the merged machine, as the editors do, never merged as text.
+
+**Layout never conflicts.** The drawing properties (position, size, region layout and sizes, bend points, label offset, colors, group) take ours' value when both sides changed them, and the report says so. Positions are merged relative to the state that owns the vertex and bend points relative to the transition's source, then placed in the merged machine: a state moved on one side inside a composite state moved on the other ends up where it was moved, inside the moved composite. A vertex moved to another region takes its position from the side that moved it. Numbers are compared at 0.1 px, as files store them.
+
+**Conflicts** keep ours and are reported:
+
+- a model property set to two different values (ours' value is kept); a vertex whose type one side changed while the other changed it too keeps ours' version;
+- an element deleted on one side and changed on the other, or given new contents, new transitions or transitions moved to it: kept deleted when ours deleted it, the other side's changes and additions left out; kept with its contents and transitions, as ours has them, when theirs deleted it. A region removed from a state counts as deleted the same way;
+- two states moved into each other: the owners of ours are kept.
+
+**Validation.** The merged machine is validated as `fsm write` validates machines, and the issues that neither `ours` nor `theirs` has (same element, same message) are reported as caused by the merge: for example a state given an unguarded completion transition on each side. They don't change the exit code.
+
+**Files.** An empty (white space or a byte order mark only) or missing `base` is a file without a machine: the two sides then added everything, and what they hold alike is kept as it is. `ours` and `theirs` must be state machines with the same machine id. Files that can't be merged at all (unreadable, not a state machine, two different machines) are an error, and nothing is written.
+
+**Exit codes:** `0` merged without a conflict, `1` conflicts remain (the file is written, with ours' choices) or the files can't be merged (nothing written), `2` bad usage.
+
+#### Report
+
+On stderr: the output file and the counts, then a line per conflict (`✕`) with ours' and theirs' values or what the deletion took, a line per element whose layout both sides changed (`·`), and a line per issue the merge caused (`!`). Elements are named with [`fsm diff`'s labels](#labels), as they were in the base (as a side has them for an element it added).
+
+```
+MediaPlayer.fsm: 9 changes merged, 3 conflicts
+  ✕ transition Playing → Paused on pause: guard
+      ours    [canPause()]
+      theirs  [isPlaying() && !locked()]
+  ✕ state Paused: deleted on ours, transition Mono → Paused on mute added on theirs
+      kept deleted: theirs' changes are left out
+  ✕ state Standby: deleted on theirs, entry changed on ours
+      kept, as ours has it
+  · layout: state Stopped moved on both sides, kept ours
+  ! transition Stopped → Playing: warning: 'Stopped' has several completion transitions without triggers or guards.
+```
+
+- *Changes merged* counts the elements changed on either side (added, removed, changed, or moved: `fsm diff`'s statuses) that the merged file has as that side has them, outside conflicts.
+- A property conflict shows the property as `fsm diff` names it, then the two values as its sentences show them (`none` when empty). A containment cycle shows `owner (a containment cycle)` and the two owners.
+- A deletion conflict says which side deleted the element (or `region <name> deleted` for a region of it) and what the other side did: `<property> changed` for the element itself (`do activity`, `deferred events`), `<label> changed` for what it holds, `<label> added` for new contents and transitions.
+- The layout words are `moved`, `resized`, `regions resized`, `rerouted`, `label moved`, `recolored` and `regrouped`.
+
+#### JSON output
+
+`--json` prints one JSON document on stdout instead, with the keys in this order (key names as in `fsm diff --json`):
+
+- `merged`: the changes merged, each `{ "id", "element", "status", "label", "from" }`: `element` and `status` as in `fsm diff`, `from` is `ours`, `theirs` or `both`.
+- `conflicts`: each `{ "id", "element", "label", "conflict", "property", "base", "ours", "theirs", "deletedOn", "region", "changes", "kept" }`:
+  - `conflict`: `property`, `deleted` or `cycle`;
+  - `property`, `base`, `ours`, `theirs`: the property and its three raw values, as `fsm diff`'s `before` and `after` (`null` where a version lacks the element; all `null` for `deleted`);
+  - `deletedOn`: `ours` or `theirs` for `deleted`, else `null`; `region`: `region <name>` when it is a region of the element that was deleted, else `null`;
+  - `changes`: for `deleted`, what the other side did, as in the text (`entry changed`, `transition Mono → Paused on mute added`);
+  - `kept`: whether the element is in the merged file.
+- `layout`: the elements whose drawing properties both sides changed, each `{ "id", "element", "label", "properties" }` (`fsm diff`'s drawing property names: `position`, `size`, `regionLayout`, `regionSizes`, `points`, `labelOffset`, `color`, `itemColors`, `group`).
+- `issues`: the issues the merge caused, each `{ "id", "label", "severity", "message" }` (`id` empty for the machine).
+- `counts`: `merged`, `conflicts`, `layout`, `issues`.
+
+```json
+{
+  "merged": [
+    { "id": "v_off", "element": "vertex", "status": "changed", "label": "State Off", "from": "theirs" }
+  ],
+  "conflicts": [
+    {
+      "id": "t8", "element": "transition", "label": "Transition Playing → Paused on pause",
+      "conflict": "property", "property": "guard",
+      "base": "", "ours": "canPause()", "theirs": "isPlaying() && !locked()",
+      "deletedOn": null, "region": null, "changes": [], "kept": true
+    }
+  ],
+  "layout": [],
+  "issues": [],
+  "counts": { "merged": 1, "conflicts": 1, "layout": 0, "issues": 0 }
+}
+```
+
+(The program prints one key per line.)
+
+#### As a Git merge driver
+
+Git can merge `.fsm` files with `fsm merge` instead of merging their text. Git calls a merge driver with the base, ours and theirs as temporary files and takes the result from the ours file, so the command line is `fsm merge %O %A %B -o %A`. With exit code `0` Git completes the merge by itself; with `1` it stops and lists the file as conflicted, and the file holds the merge with ours' choices, without conflict markers, so it opens in the editors as it is: review the report, change what needs changing, then `git add` it. Where there is no common ancestor, Git passes an empty base.
+
+To set it up (not done by FSM Editor), declare the driver in a Git configuration file:
+
+```ini
+[merge "fsm"]
+    name = FSM Editor state machines
+    driver = fsm merge %O %A %B -o %A
+```
+
+and assign it to the files in `.gitattributes` (or `.git/info/attributes`):
+
+```
+*.fsm merge=fsm
+```
+
+The report then names Git's temporary file (`.merge_file_…`) rather than the machine's.
+
 ## Bundled templates
 
 | Template | Writes, for a machine named `Order` |
@@ -308,7 +422,7 @@ Test the list before such a call when it may be empty, or the call's indentation
 
 ## WebAssembly
 
-The library (`src/lib.rs`) is the pipeline of `fsm write` without a file system, built as a WebAssembly module without imports and without wasm-bindgen:
+The library (`src/lib.rs`) is the pipeline of `fsm write` without a file system, built as a WebAssembly module without imports and without wasm-bindgen (`fsm diff` and `fsm merge` are the executable's only):
 
 ```sh
 rustup target add wasm32-unknown-unknown
