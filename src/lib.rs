@@ -20,6 +20,7 @@ pub mod render;
 mod sha256;
 mod tables;
 mod validation;
+pub mod writer;
 pub mod xmi;
 mod xml;
 

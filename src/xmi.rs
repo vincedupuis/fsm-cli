@@ -574,7 +574,7 @@ fn default_size(t: VertexType) -> (f64, f64) {
 
 /// `normalizeModel`'s layout rules: groups the diagram can't show are dissolved, and a state's self-transition
 /// keeps its bend points only when it has 1 or 3 of them.
-fn normalize(model: &mut FsmModel) {
+pub(crate) fn normalize(model: &mut FsmModel) {
     // A group is the vertices sharing a group id: those on a state's border leave it, and so do those outside the
     // region of its first member (in file order). A group left with fewer than two members is dissolved.
     let border: Vec<bool> = {

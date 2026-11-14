@@ -1,7 +1,8 @@
-//! Minimal XML reader, enough for XMI documents: elements, attributes, text,
-//! CDATA, comments, processing instructions and namespaces. Element and
+//! Minimal XML reader and writer, enough for XMI documents: elements, attributes,
+//! text, CDATA, comments, processing instructions and namespaces. Element and
 //! attribute names are rewritten to canonical prefixes for known namespace
-//! URIs, so documents using other prefixes read the same.
+//! URIs, so documents using other prefixes read the same. The writer is
+//! `writeXml` of fsm-editor-vscode/src/xml.ts.
 
 use std::collections::HashMap;
 
@@ -316,4 +317,90 @@ fn resolve(raw: Raw, scope: &HashMap<String, String>, canonical: &HashMap<&str, 
     }
     el.children = raw.children.into_iter().map(|c| resolve(c, &s, canonical)).collect();
     el
+}
+
+// ------------------------------------------------------------------ writing
+
+/// `escapeXml`: the characters that attribute values and texts can't hold as they are.
+pub fn escape_xml(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\r' => out.push_str("&#13;"),
+            '\n' => out.push_str("&#10;"),
+            '\t' => out.push_str("&#9;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// A child of an element to write: an element or a text.
+pub enum Child {
+    Node(Node),
+    Text(String),
+}
+
+/// An element to write: its name, its attributes in order (an empty value is left out), its children.
+pub struct Node {
+    pub name: String,
+    pub attrs: Vec<(&'static str, String)>,
+    pub children: Vec<Child>,
+}
+
+impl Node {
+    pub fn new(name: &str, attrs: Vec<(&'static str, String)>) -> Node {
+        Node { name: name.to_string(), attrs, children: Vec::new() }
+    }
+
+    /// An element holding one text (`<body>text</body>`).
+    pub fn text(name: &str, text: &str) -> Node {
+        Node { name: name.to_string(), attrs: Vec::new(), children: vec![Child::Text(text.to_string())] }
+    }
+
+    pub fn push(&mut self, child: Node) {
+        self.children.push(Child::Node(child));
+    }
+
+    pub fn with(mut self, children: impl IntoIterator<Item = Node>) -> Node {
+        self.children.extend(children.into_iter().map(Child::Node));
+        self
+    }
+}
+
+/// `writeXml`: the declaration, then one element per line indented by two spaces, an element holding only a text
+/// on one line (its line breaks written as they are), and a line break at the end.
+pub fn write_xml(root: &Node) -> String {
+    fn write(node: &Node, indent: &str, out: &mut String) {
+        out.push_str(indent);
+        out.push('<');
+        out.push_str(&node.name);
+        for (k, v) in &node.attrs {
+            if !v.is_empty() {
+                out.push_str(&format!(" {k}=\"{}\"", escape_xml(v)));
+            }
+        }
+        match node.children.as_slice() {
+            [] => out.push_str("/>\n"),
+            [Child::Text(t)] => out.push_str(&format!(">{}</{}>\n", escape_xml(t).replace("&#10;", "\n"), node.name)),
+            children => {
+                out.push_str(">\n");
+                let inner = format!("{indent}  ");
+                for c in children {
+                    match c {
+                        Child::Text(t) => out.push_str(&format!("{inner}{}\n", escape_xml(t))),
+                        Child::Node(n) => write(n, &inner, out),
+                    }
+                }
+                out.push_str(&format!("{indent}</{}>\n", node.name));
+            }
+        }
+    }
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    write(root, "", &mut out);
+    out
 }
