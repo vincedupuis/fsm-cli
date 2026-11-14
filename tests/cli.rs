@@ -304,6 +304,13 @@ fn merge_over_ours_as_git_calls_it() {
     assert_eq!((stdout(&o), stderr(&o)), (String::new(), "Ours.fsm: 2 changes merged, 0 conflicts\n".to_string()));
     assert_eq!(read("Ours.fsm"), saved(&edited(&[GUARD_A, RENAME])));
 
+    // --name: the header shows the machine's path (Git's %P) instead of the output file.
+    write("Ours.fsm", &edited(&[GUARD_A]));
+    let o = fsm(&dir, &["merge", "Base.fsm", "Ours.fsm", "Theirs.fsm", "-o", "Ours.fsm", "--name", "models/Lamp.fsm"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(stderr(&o), "models/Lamp.fsm: 2 changes merged, 0 conflicts\n");
+    assert_eq!(read("Ours.fsm"), saved(&edited(&[GUARD_A, RENAME])));
+
     // Conflicts: exit 1, ours kept, the file still written (valid, without conflict markers).
     write("Ours.fsm", &edited(&[GUARD_A]));
     write("Theirs.fsm", &edited(&[GUARD_B, RENAME]));

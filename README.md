@@ -205,12 +205,13 @@ Numbers are rounded to 0.1 and written without a fraction when whole.
 ### fsm merge
 
 ```sh
-fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--json]
+fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--name <path>] [--json]
 ```
 
 | Option | |
 | --- | --- |
 | `-o, --out <file>` | Where to write the merged machine. It may be `ours.fsm` or `theirs.fsm`: every input is read before it is written. |
+| `--name <path>` | The name the report's header shows instead of the output file, such as the machine's path where the output is a temporary file (Git's `%P`). Nothing else changes; the JSON has no header. |
 | `--json` | Print the report as one JSON document on stdout (see below) instead of text on stderr. |
 | `-h, --help` | |
 
@@ -298,14 +299,14 @@ MediaPlayer.fsm: 9 changes merged, 3 conflicts
 
 #### As a Git merge driver
 
-Git can merge `.fsm` files with `fsm merge` instead of merging their text. Git calls a merge driver with the base, ours and theirs as temporary files and takes the result from the ours file, so the command line is `fsm merge %O %A %B -o %A`. With exit code `0` Git completes the merge by itself; with `1` (conflicts, or validation errors the merge caused) it stops and lists the file as conflicted, and the file holds the merge with ours' choices, without conflict markers, so it opens in the editors as it is: review the report, change what needs changing, then `git add` it. Where there is no common ancestor, Git passes an empty base.
+Git can merge `.fsm` files with `fsm merge` instead of merging their text. Git calls a merge driver with the base, ours and theirs as temporary files and takes the result from the ours file, so the command line is `fsm merge %O %A %B -o %A --name %P`: `%P` is the path of the file being merged, which the report's header then shows instead of Git's temporary file (`.merge_file_…`). With exit code `0` Git completes the merge by itself; with `1` (conflicts, or validation errors the merge caused) it stops and lists the file as conflicted, and the file holds the merge with ours' choices, without conflict markers, so it opens in the editors as it is: review the report, change what needs changing, then `git add` it. Where there is no common ancestor, Git passes an empty base.
 
 To set it up (not done by FSM Editor), declare the driver in a Git configuration file:
 
 ```ini
 [merge "fsm"]
     name = FSM Editor state machines
-    driver = fsm merge %O %A %B -o %A
+    driver = fsm merge %O %A %B -o %A --name %P
 ```
 
 and assign it to the files in `.gitattributes` (or `.git/info/attributes`):
@@ -313,8 +314,6 @@ and assign it to the files in `.gitattributes` (or `.git/info/attributes`):
 ```
 *.fsm merge=fsm
 ```
-
-The report then names Git's temporary file (`.merge_file_…`) rather than the machine's.
 
 ## Bundled templates
 

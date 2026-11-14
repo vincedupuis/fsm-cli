@@ -16,7 +16,7 @@ cargo clippy --all-targets
 cargo fmt                   # rustfmt.toml: 120 columns
 cargo run -- write "../fsm-editor-vscode/examples/*.fsm" -t sml -o <dir>
 cargo run -- diff old.fsm new.fsm [--json]
-cargo run -- merge base.fsm ours.fsm theirs.fsm -o merged.fsm [--json]
+cargo run -- merge base.fsm ours.fsm theirs.fsm -o merged.fsm [--name <path>] [--json]
 ```
 
 The WebAssembly module's crate type is given on the command line, not in `Cargo.toml`: a library built as rlib and cdylib at once gets no LTO (1.38 MB instead of 1.24 MB). The `wasm` profile is the release one at `opt-level = "s"`.

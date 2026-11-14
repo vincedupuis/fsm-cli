@@ -1,6 +1,6 @@
-//! `fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--json]`: a three-way merge of a state machine
+//! `fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--name <path>] [--json]`: a three-way merge of a state machine
 //! (the merge itself is the library's `merge` module). Every input is read before the output is written, in one go,
-//! so the output can be one of them, as a Git merge driver has it (`fsm merge %O %A %B -o %A`).
+//! so the output can be one of them, as a Git merge driver has it (`fsm merge %O %A %B -o %A --name %P`).
 
 use std::path::Path;
 
@@ -11,7 +11,7 @@ use fsm_cli::xmi::from_xmi;
 
 use crate::Failure;
 
-const USAGE: &str = "Usage: fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--json]
+const USAGE: &str = "Usage: fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--name <path>] [--json]
 
 Merges two versions of a state machine (.fsm files), ours and theirs, made
 from a common one, the base: elements are matched by their xmi:id and merged
@@ -25,10 +25,13 @@ counts as a file without a machine. The report goes to stderr: the conflicts
 (✕), the layout kept from ours (·), and the validation issues the merge
 caused (!), whose errors make it fail like a conflict.
 
-As a Git merge driver: fsm merge %O %A %B -o %A
+As a Git merge driver: fsm merge %O %A %B -o %A --name %P
 
 Options:
   -o, --out <file>  Where to write the merged machine.
+      --name <path> The name the report's header shows instead of the output
+                    file (Git's %P: the merged file's path, where -o is a
+                    temporary file).
       --json        Print the report as one JSON document on stdout instead.
   -h, --help        Show this help.
 
@@ -47,6 +50,8 @@ struct Args {
     ours: String,
     theirs: String,
     out: String,
+    /// The name the report's header shows, instead of the output file.
+    name: Option<String>,
     json: bool,
 }
 
@@ -60,6 +65,7 @@ enum Command {
 fn parse_args(argv: &[String]) -> Result<Command, Failure> {
     let mut files = Vec::new();
     let mut out = None;
+    let mut name = None;
     let mut json = false;
     let mut it = argv.iter();
     while let Some(a) = it.next() {
@@ -72,6 +78,11 @@ fn parse_args(argv: &[String]) -> Result<Command, Failure> {
                 None => return Err(usage(format!("{a} needs a file."))),
             },
             _ if a.starts_with("--out=") => out = Some(a["--out=".len()..].to_string()),
+            "--name" => match it.next() {
+                Some(n) => name = Some(n.clone()),
+                None => return Err(usage(format!("{a} needs a path."))),
+            },
+            _ if a.starts_with("--name=") => name = Some(a["--name=".len()..].to_string()),
             _ if a.starts_with('-') && a != "-" => return Err(usage(format!("Unknown option {a}."))),
             _ => files.push(a.clone()),
         }
@@ -85,7 +96,7 @@ fn parse_args(argv: &[String]) -> Result<Command, Failure> {
     let Some(out) = out else {
         return Err(usage("Give the file to write with -o.".to_string()));
     };
-    Ok(Command::Run(Args { base: files.remove(0), ours: files.remove(0), theirs: files.remove(0), out, json }))
+    Ok(Command::Run(Args { base: files.remove(0), ours: files.remove(0), theirs: files.remove(0), out, name, json }))
 }
 
 pub fn main(argv: &[String]) -> Result<(), Failure> {
@@ -137,7 +148,8 @@ fn run(args: Args) -> Result<(), Failure> {
     if args.json {
         print!("{}", result.to_json());
     } else {
-        eprint!("{}", result.to_text(&display(Path::new(&out))));
+        let header = args.name.clone().unwrap_or_else(|| display(Path::new(&out)));
+        eprint!("{}", result.to_text(&header));
     }
     // Conflicts, and validation errors the merge caused (a machine that no longer generates code), need a review.
     if result.succeeded() { Ok(()) } else { Err(Failure::Conflicts) }
@@ -162,12 +174,35 @@ mod tests {
                 ours: "o.fsm".into(),
                 theirs: "t.fsm".into(),
                 out: out.into(),
+                name: None,
                 json,
             }))
         };
         assert_eq!(parse_args(&args(&["b.fsm", "o.fsm", "t.fsm", "-o", "o.fsm"])), run("o.fsm", false));
         assert_eq!(parse_args(&args(&["--json", "b.fsm", "--out", "m.fsm", "o.fsm", "t.fsm"])), run("m.fsm", true));
         assert_eq!(parse_args(&args(&["b.fsm", "o.fsm", "t.fsm", "--out=m.fsm"])), run("m.fsm", false));
+        let named = |name: &str| {
+            Ok(Command::Run(Args {
+                base: "b.fsm".into(),
+                ours: "o.fsm".into(),
+                theirs: "t.fsm".into(),
+                out: ".merge_file_a1".into(),
+                name: Some(name.into()),
+                json: false,
+            }))
+        };
+        assert_eq!(
+            parse_args(&args(&["b.fsm", "o.fsm", "t.fsm", "-o", ".merge_file_a1", "--name", "models/Lamp.fsm"])),
+            named("models/Lamp.fsm")
+        );
+        assert_eq!(
+            parse_args(&args(&["b.fsm", "o.fsm", "t.fsm", "--name=a b.fsm", "-o", ".merge_file_a1"])),
+            named("a b.fsm")
+        );
+        assert_eq!(
+            parse_args(&args(&["b.fsm", "o.fsm", "t.fsm", "-o", "m.fsm", "--name"])),
+            Err(usage("--name needs a path.".to_string()))
+        );
         let three = Err(usage("Give three .fsm files: the base, ours and theirs.".to_string()));
         assert_eq!(parse_args(&args(&["b.fsm", "o.fsm", "-o", "m.fsm"])), three);
         assert_eq!(parse_args(&args(&["--json"])), three);
