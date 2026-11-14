@@ -1,6 +1,9 @@
-# On a version tag (v0.1.0), tests fsm-generator, builds it for every platform and
-# attaches the builds to the GitHub Release of that tag: per platform, an archive of
-# the executable with the templates/ folder next to it, where `-t <name>` finds them.
+# On a version tag (v0.1.0), tests fsm-cli, builds it and attaches the builds to the
+# GitHub Release of that tag:
+# - per platform, fsm-<version>-<platform>.tar.gz (.zip on Windows): the `fsm`
+#   executable with the templates/ folder next to it, where `-t <name>` finds them;
+# - for FSM Editor for VS Code, fsm-<version>.wasm (the library as a WebAssembly
+#   module, see README.md) and fsm-templates-<version>.tar.gz (templates/).
 name: Release
 
 on:
@@ -55,17 +58,17 @@ jobs:
       - name: Package the executable with its templates
         shell: bash
         run: |
-          dir="fsm-generator-${GITHUB_REF_NAME#v}-${{ matrix.platform }}"
+          dir="fsm-${GITHUB_REF_NAME#v}-${{ matrix.platform }}"
           release="target/${{ matrix.target }}/release"
           mkdir -p "$RUNNER_TEMP/$dir" "$RUNNER_TEMP/dist"
           cp -R templates "$RUNNER_TEMP/$dir"
           cd "$RUNNER_TEMP"
           case "$dir" in
             *-windows-*)
-              cp "$GITHUB_WORKSPACE/$release/fsm-generator.exe" "$dir"
+              cp "$GITHUB_WORKSPACE/$release/fsm.exe" "$dir"
               7z a -tzip "dist/$dir.zip" "$dir" > /dev/null ;;
             *)
-              cp "$GITHUB_WORKSPACE/$release/fsm-generator" "$dir"
+              cp "$GITHUB_WORKSPACE/$release/fsm" "$dir"
               tar czf "dist/$dir.tar.gz" "$dir" ;;
           esac
 
@@ -75,8 +78,35 @@ jobs:
           path: ${{ runner.temp }}/dist/*
           if-no-files-found: error
 
+  wasm:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # The crate type is given here: a library built as rlib and cdylib at once gets no LTO (see Cargo.toml).
+      - name: Build the WebAssembly module
+        run: cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown --locked
+
+      - name: Package the module and the templates
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          mkdir -p "$RUNNER_TEMP/dist"
+          cp target/wasm32-unknown-unknown/wasm/fsm_cli.wasm "$RUNNER_TEMP/dist/fsm-$version.wasm"
+          tar czf "$RUNNER_TEMP/dist/fsm-templates-$version.tar.gz" templates
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wasm
+          path: ${{ runner.temp }}/dist/*
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, wasm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -92,9 +122,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           version=${GITHUB_REF_NAME#v}
-          assets=("$RUNNER_TEMP"/dist/fsm-generator-$version-*)
+          assets=("$RUNNER_TEMP"/dist/*)
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --title "fsm-generator $version" --generate-notes
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --title "fsm-cli $version" --generate-notes
           fi
