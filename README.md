@@ -1,41 +1,53 @@
-# fsm-generator
+# fsm-cli
 
-Generates code from [FSM Editor](https://github.com/vincedupuis/fsm-editor-vscode) state machines (`.fsm` files: UML 2.5.1 in XMI 2.5.1) with [Jinja](https://jinja.palletsprojects.com/) templates. One template can write any number of files, in any language.
+`fsm`, the command-line tool of [FSM Editor](https://github.com/vincedupuis/fsm-editor-vscode), for its state machines (`.fsm` files: UML 2.5.1 in XMI 2.5.1). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language.
 
-It is the `fsm` code generator of FSM Editor, written in Rust, with templates rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja) instead of Handlebars: the same validation and messages, and the same code model, the language-neutral description of a machine that templates print. The bundled `ts.jinja` and `sml.jinja` generate the same files as FSM Editor's `ts.hbs` and `sml.hbs`.
+It is FSM Editor's code generator: the editions for Visual Studio and JetBrains IDEs run the `fsm` executable, and the one for VS Code runs the same code built as WebAssembly, on the desktop and on the web. It validates the machines with the editors' rules and messages, and builds the code model, the language-neutral description of a machine that templates print.
 
 - [Building](#building)
 - [Usage](#usage)
 - [Bundled templates](#bundled-templates)
 - [Writing a template](#writing-a-template)
+- [WebAssembly](#webassembly)
 - [Coming from the Handlebars templates](#coming-from-the-handlebars-templates)
 
 ## Building
 
 ```sh
-cargo build --release      # target/release/fsm-generator
+cargo build --release      # target/release/fsm
 cargo test
 ```
 
 The program is a single executable without dependencies. Templates are files, not built into it: ship it with the `templates/` folder next to it, where `-t <name>` finds them.
 
-Prebuilt executables for Linux and macOS (x64, arm64) and Windows (x64), each with its `templates/` folder, are on the [Releases](https://github.com/vincedupuis/fsm-generator/releases) page.
+Prebuilt executables for Linux and macOS (x64, arm64) and Windows (x64), each with its `templates/` folder, are on the [Releases](https://github.com/vincedupuis/fsm-cli/releases) page (`fsm-<version>-<platform>.tar.gz`, `.zip` on Windows), with the WebAssembly module (`fsm-<version>.wasm`) and the templates alone (`fsm-templates-<version>.tar.gz`).
 
 ## Usage
 
 ```sh
-fsm-generator <files...> --template <template> [--out <folder>]
+fsm <command> [options]
+fsm --help                 # the commands
+fsm <command> --help       # the options of a command
+fsm --version
+```
+
+A missing or unknown command is bad usage (exit code `2`).
+
+### fsm write
+
+```sh
+fsm write <files...> --template <template> [--out <folder>] [--check]
 ```
 
 | Option | |
 | --- | --- |
-| `-t, --template <file>` | Template file. A bare name such as `ts` means `templates/ts.jinja` next to the program (or, for `cargo run`, in this folder). |
+| `-t, --template <file>` | Template file (`.jinja`). A bare name such as `ts` means `templates/ts.jinja` next to the program (or, for `cargo run`, in this folder). |
 | `-o, --out <folder>` | Output folder (default: current folder). |
 | `--check` | Write nothing: report the files of the output folder that are missing or out of date (see below). |
-| `-h, --help`, `-v, --version` | |
+| `-h, --help` | |
 
 ```sh
-fsm-generator "models/**/*.fsm" -t sml -o src/generated
+fsm write "models/**/*.fsm" -t sml -o src/generated
 ```
 
 - The machines are validated first. Nothing is generated when they have errors, and warnings are reported.
@@ -44,6 +56,7 @@ fsm-generator "models/**/*.fsm" -t sml -o src/generated
 - Problems, including the errors found while building the code model (such as pseudostates forming a cycle) and the warnings and errors a template reports, are printed to stderr as `file:line: severity: message`, which editors' problem matchers and CI logs understand.
 - Exit codes: `0` success, `1` errors in the machines or the template (with `--check`, also files missing or out of date), `2` bad usage.
 - Generated files are always overwritten.
+- Handlebars templates (`.hbs`) are refused: see [Coming from the Handlebars templates](#coming-from-the-handlebars-templates).
 - `--check` writes nothing: it renders the template in memory and checks the output folder instead, for instance as a CI step that fails when someone changed a model without regenerating its code. Every file the template generates for a machine and writes the machine's `machine.modelHash` in is reported as up to date (stdout) when the file in the folder holds that hash, and as an error (stderr, `file:line: error: …`) when it is missing or holds another hash. Files without the hash, such as the `FsmTimers.h` that the `sml` template shares between machines, aren't checked, and only the hash is compared: a file generated by another version of the template counts as up to date. A machine's files carry its own model hash only, while a change to a submachine can also change the files of the machines that use it (their events include the submachine's): check the submachines' files too, e.g. with `"models/*.fsm"`, and regenerate them all.
 
 ## Bundled templates
@@ -150,7 +163,68 @@ void fire(int t) {
 
 Test the list before such a call when it may be empty, or the call's indentation is left as a line of spaces. `templates/ts.jinja` is a complete example to copy: it handles every step kind and has the small runtime the steps rely on.
 
+## WebAssembly
+
+The library (`src/lib.rs`) is the pipeline of `fsm write` without a file system, built as a WebAssembly module without imports and without wasm-bindgen:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown
+# target/wasm32-unknown-unknown/wasm/fsm_cli.wasm
+```
+
+It exports its `memory` and three functions. The request and the response are UTF-8 JSON:
+
+- `fsm_alloc(len) → ptr`: a buffer of `len` bytes, to copy the request into;
+- `fsm_generate(ptr, len) → out`: runs the request and frees its buffer. At `out`, the response's length in bytes (a little-endian u32), then the response;
+- `fsm_free(out, length + 4)`: frees the response's buffer.
+
+```js
+const x = new WebAssembly.Instance(new WebAssembly.Module(bytes), {}).exports;
+function generate(request) {
+  const req = new TextEncoder().encode(JSON.stringify(request));
+  const p = x.fsm_alloc(req.length) >>> 0;
+  new Uint8Array(x.memory.buffer, p, req.length).set(req);
+  const out = x.fsm_generate(p, req.length) >>> 0;
+  const len = new DataView(x.memory.buffer).getUint32(out, true);
+  const response = JSON.parse(new TextDecoder().decode(new Uint8Array(x.memory.buffer, out + 4, len)));
+  x.fsm_free(out, len + 4);
+  return response;
+}
+```
+
+The request holds what `fsm write` would read: every `.fsm` file the generation may need (the files to generate and the machines their submachine states use, found through the states' `submachine` hrefs: `file#id`, the file relative to the folder of the file holding the href, with its `%XX` escapes decoded), and the template's text. Paths are `/`-separated; relative ones are resolved against `cwd`, and messages show paths relative to it.
+
+```jsonc
+{
+  "cwd": "/work",                          // optional, "/" by default
+  "files": { "/work/Order.fsm": "<?xml …", "/work/sub/Payment.fsm": "<?xml …" },  // path → text
+  "generate": ["Order.fsm"],               // the files to generate, in order
+  "template": "---\nlang: ts\n---\n…",     // the template's text
+  "templateName": "ts.jinja"               // its name in messages
+}
+```
+
+The response holds what `fsm write` would write and print:
+
+```jsonc
+{
+  "exitCode": 0,                           // fsm write's: 0, 1 errors in the machines or the template, 2 bad request
+  "files": [                               // the files to write (none unless exitCode is 0)
+    { "path": "Order.ts", "content": "…", "source": "Order.fsm", "modelHash": "3f1c…" }
+  ],
+  "issues": [                              // its stderr lines: file:line: severity: message
+    { "file": "Order.fsm", "line": 12, "id": "s3", "severity": "warning", "message": "…" }
+  ],
+  "error": null                            // or its last line, without "fsm: "
+}
+```
+
+A file missing from `files` is reported as `fsm write` reports a file that can't be read. `modelHash` is what `--check` looks for in a generated file.
+
 ## Coming from the Handlebars templates
+
+FSM Editor's templates used to be Handlebars (`.hbs`). They no longer are: `fsm` reads Jinja templates only, and refuses a `.hbs` one. To convert a template, start from the bundled `ts.jinja` or `sml.jinja`, which were converted from `ts.hbs` and `sml.hbs` and generate the same files, and translate what you changed with this table:
 
 | Handlebars | Jinja |
 | --- | --- |
