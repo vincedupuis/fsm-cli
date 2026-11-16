@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "Kinds",
+  "type": "behavioral",
+  "documentation": [
+    "x"
+  ],
+  "initial": "A",
+  "points": [
+    1
+  ],
+  "elements": [
+    {
+      "name": "A",
+      "type": "state",
+      "entry": [
+        "a()"
+      ],
+      "defer": 1,
+      "transitions": {
+        "type": "external"
+      }
+    },
+    7,
+    {
+      "name": 3,
+      "type": "state",
+      "points": "none",
+      "elements": {}
+    }
+  ]
+}

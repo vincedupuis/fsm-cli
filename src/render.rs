@@ -326,8 +326,8 @@ pub struct OutputFile {
     pub content: String,
 }
 
-/// A warning or error a template reports with `warn()` or `error()`, about the element with xmi:id `id` ('' when
-/// none).
+/// A warning or error a template reports with `warn()` or `error()`, about the element with the id `id` (see
+/// format.rs; '' when none).
 pub struct TemplateIssue {
     pub severity: Severity,
     pub message: String,

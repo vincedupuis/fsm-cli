@@ -1,9 +1,9 @@
-//! `fsm write <files...> --template <template>`: reads UML state machines (`.fsm` files: XMI 2.5.1), validates them,
+//! `fsm write <files...> --template <template>`: reads UML state machines (`.fsm` files, JSON), validates them,
 //! builds their code models and renders them with a Jinja template (MiniJinja).
 
 use std::path::{Path, PathBuf};
 
-use fsm_cli::generate::{FileIssue, GenerateError, GeneratedFile, generate, line_of};
+use fsm_cli::generate::{FileIssue, GenerateError, GeneratedFile, generate};
 use fsm_cli::paths::{absolute, display, expand_glob, slash};
 use fsm_cli::render::{Renderer, TemplateError, parse_template, refuse_handlebars};
 
@@ -150,8 +150,7 @@ fn template_path(name: &str) -> Result<PathBuf, Failure> {
 /// `file:line: severity: message`, the format editors and CI problem matchers understand.
 fn report(issues: &[FileIssue]) {
     for i in issues {
-        let line = std::fs::read_to_string(absolute(&i.file)).map_or(1, |text| line_of(&text, &i.id));
-        eprintln!("{}:{line}: {}: {}", i.file, i.severity.as_str(), i.message);
+        eprintln!("{}:{}: {}: {}", i.file, i.line, i.severity.as_str(), i.message);
     }
 }
 

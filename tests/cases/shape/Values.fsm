@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "Values",
+  "type": "behavioural",
+  "elements": [
+    {
+      "name": "A",
+      "type": "stat"
+    },
+    {
+      "name": "B"
+    },
+    {
+      "type": "state"
+    },
+    {
+      "name": "C",
+      "type": "state",
+      "transitions": [
+        {
+          "type": "externl",
+          "target": "A"
+        }
+      ],
+      "points": [
+        {
+          "name": "p",
+          "type": "entry"
+        }
+      ]
+    }
+  ]
+}

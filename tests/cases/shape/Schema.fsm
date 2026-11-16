@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../schemas/fsm.schema.json",
+  "format": 1,
+  "name": "Schema",
+  "type": "behavioral",
+  "initial": {
+    "target": "A"
+  },
+  "elements": [
+    {
+      "name": "A",
+      "type": "state"
+    }
+  ]
+}

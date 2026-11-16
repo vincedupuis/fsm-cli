@@ -1,4 +1,4 @@
-//! In-memory UML state machine model, as read from a `.fsm` file (see xmi.rs).
+//! In-memory UML state machine model, as read from a `.fsm` file (see format.rs).
 //!
 //! The hierarchy is flat: every vertex points to its owner through `parent`,
 //! which is either a region id (root region of the machine or a region of a
@@ -7,9 +7,6 @@
 //! Entry/exit points whose parent is a top-level region are connection points
 //! of the state machine itself; a submachine state that references this machine
 //! exposes them through `ConnectionPointRef` vertices placed on its border.
-//!
-//! The layout is kept too (positions, sizes, routes, colors, groups), as `fromXmi` in
-//! fsm-editor-vscode/src/xmi.ts reads it: validation and code generation ignore it, `fsm diff` compares it.
 
 use std::collections::HashMap;
 
@@ -125,69 +122,25 @@ impl MachineKind {
 
 #[derive(Debug, Clone)]
 pub struct Region {
+    /// Derived from the names (see format.rs).
     pub id: String,
+    /// Empty for the only region of a state or of the machine, which has no name.
     pub name: String,
-    /// Layout, regions of a state: extent along the state's region layout (height when stacked, width side by
-    /// side), from the region's shape. None without a shape.
-    pub size: Option<f64>,
 }
 
 impl Region {
     pub fn new(id: &str, name: &str) -> Region {
-        Region { id: id.to_string(), name: name.to_string(), size: None }
+        Region { id: id.to_string(), name: name.to_string() }
     }
-}
-
-/// How a state's regions are laid out: side by side, or stacked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RegionLayout {
-    Horizontal,
-    Vertical,
-}
-
-impl RegionLayout {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            RegionLayout::Horizontal => "horizontal",
-            RegionLayout::Vertical => "vertical",
-        }
-    }
-}
-
-/// Items of a state or transition that can have their own color, in file order (`ITEM_COLOR_KEYS` of the editors).
-pub const ITEM_COLOR_KEYS: [&str; 11] = [
-    "background",
-    "entry",
-    "exit",
-    "doActivity",
-    "deferrable",
-    "invariant",
-    "triggers",
-    "guard",
-    "effect",
-    "precondition",
-    "postcondition",
-];
-
-/// A point of the diagram.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-}
-
-/// Diagram colors, `#rrggbb`: the element's own (empty when none), and per item, in `ITEM_COLOR_KEYS` order.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Colors {
-    pub color: String,
-    pub items: Vec<(&'static str, String)>,
 }
 
 /// A vertex. Texts are empty when absent.
 #[derive(Debug, Clone)]
 pub struct Vertex {
+    /// Derived from the names (see format.rs).
     pub id: String,
     pub vtype: VertexType,
+    /// Empty for initial and history pseudostates and connection point references, which have none.
     pub name: String,
     pub parent: String,
     pub regions: Vec<Region>,
@@ -196,25 +149,15 @@ pub struct Vertex {
     pub do_activity: String,
     pub deferrable: Vec<String>,
     pub invariant: String,
-    /// Submachine state: XMI href of the referenced state machine, e.g. `Payment.fsm#sm`.
+    /// Submachine state: the path of the referenced machine's file, relative to this one.
     pub submachine: Option<String>,
     pub stereotype: String,
-    /// Connection point reference: xmi:id of the entry/exit point, inside the submachine's file.
+    /// Connection point reference: the name of the entry/exit point in the submachine's file.
     pub point_ref: String,
     pub point_kind: PointKind,
-    /// Comment: its text (not trimmed) and the ids of the elements it is attached to.
+    /// Comment: its text and what it is attached to (references, kept as the file writes them).
     pub text: String,
     pub anchors: Vec<String>,
-    /// Layout: the shape's bounds, absolute (NaN until placed: the reader gives every vertex a place).
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-    /// Layout of a state with regions, from its first two region shapes.
-    pub region_layout: Option<RegionLayout>,
-    pub colors: Colors,
-    /// Id of the group the vertex belongs to (empty when none): its members move together in the diagram.
-    pub group: String,
 }
 
 impl Vertex {
@@ -236,43 +179,55 @@ impl Vertex {
             point_kind: PointKind::Entry,
             text: String::new(),
             anchors: Vec::new(),
-            x: f64::NAN,
-            y: f64::NAN,
-            w: 0.0,
-            h: 0.0,
-            region_layout: None,
-            colors: Colors::default(),
-            group: String::new(),
+        }
+    }
+}
+
+/// Starts the target of a transition whose reference names nothing: the reference follows (see `unresolved`).
+pub const UNRESOLVED: char = '\u{e001}';
+
+/// The reference of a target that names nothing (`Some("")` for an `initial` or `history` without `target`).
+pub fn unresolved(target: &str) -> Option<&str> {
+    target.strip_prefix(UNRESOLVED)
+}
+
+#[derive(Debug, Clone)]
+pub struct Transition {
+    /// Derived from its source (see format.rs).
+    pub id: String,
+    pub source: String,
+    /// The target's id, or UNRESOLVED followed by a reference that names nothing. An internal transition's is its
+    /// source.
+    pub target: String,
+    pub kind: TransitionKind,
+    pub triggers: Vec<String>,
+    pub guard: String,
+    pub action: String,
+    /// Protocol state machines only.
+    pub precondition: String,
+    pub postcondition: String,
+}
+
+impl Transition {
+    pub fn new(id: &str, source: &str, target: &str, kind: TransitionKind) -> Transition {
+        Transition {
+            id: id.to_string(),
+            source: source.to_string(),
+            target: target.to_string(),
+            kind,
+            triggers: Vec::new(),
+            guard: String::new(),
+            action: String::new(),
+            precondition: String::new(),
+            postcondition: String::new(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Transition {
-    pub id: String,
-    pub source: String,
-    pub target: String,
-    pub kind: TransitionKind,
-    pub triggers: Vec<String>,
-    pub guard: String,
-    pub effect: String,
-    /// Protocol state machines only.
-    pub precondition: String,
-    pub postcondition: String,
-    /// Layout: the bend points, absolute (empty for a straight line).
-    pub points: Vec<Point>,
-    /// Layout: where the label is, from the middle of the line (None: the default place).
-    pub label_offset: Option<Point>,
-    pub colors: Colors,
-}
-
-#[derive(Debug, Clone)]
 pub struct FsmModel {
-    /// xmi:id of the state machine, used by other files to reference it.
-    pub id: String,
     pub name: String,
     pub kind: MachineKind,
-    pub context: String,
     pub documentation: String,
     pub regions: Vec<Region>,
     pub vertices: Vec<Vertex>,
@@ -282,6 +237,7 @@ pub struct FsmModel {
 /// An entry or exit point of a machine, as seen by the machines using it as a submachine.
 #[derive(Debug, Clone)]
 pub struct ConnectionPointInfo {
+    /// Its name, which the machines using it refer to it by.
     pub id: String,
     pub name: String,
     pub kind: PointKind,
@@ -297,7 +253,7 @@ pub fn machine_connection_points(model: &FsmModel) -> Vec<ConnectionPointInfo> {
                 && model.regions.iter().any(|r| r.id == v.parent)
         })
         .map(|v| ConnectionPointInfo {
-            id: v.id.clone(),
+            id: v.name.clone(),
             name: v.name.clone(),
             kind: if v.vtype == VertexType::EntryPoint { PointKind::Entry } else { PointKind::Exit },
         })

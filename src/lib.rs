@@ -9,30 +9,24 @@
 //! by the response, `fsm_free(ptr, len + 4)` frees that buffer. See README.md, "WebAssembly".
 
 mod codemodel;
-pub mod diff;
 mod expressions;
+pub mod format;
 pub mod generate;
-pub mod geometry;
+pub mod json;
 mod languages;
-pub mod merge;
 pub mod model;
-#[cfg(test)]
-mod parity;
 pub mod paths;
 pub mod render;
 mod sha256;
 mod tables;
-mod validation;
-pub mod writer;
-pub mod xmi;
-mod xml;
+pub mod validation;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use generate::{FileIssue, GenerateError, generate, line_of};
+use generate::{FileIssue, GenerateError, generate};
 use paths::absolute;
 use render::{Renderer, TemplateError, parse_template, refuse_handlebars};
 
@@ -69,9 +63,10 @@ pub struct OutFile {
 pub struct OutIssue {
     /// As displayed: relative to `cwd` when inside it.
     pub file: String,
-    /// Line of the element in the file (1 when unknown).
+    /// Line of the problem in the file (1 for the machine itself).
     pub line: usize,
-    /// xmi:id of the element (empty for the machine itself).
+    /// Id of the element, derived from the names (README.md, "Ids"): `Off`, `On.fault`, `Paused#2`. Empty for the
+    /// machine itself and for problems of the file's text or shape.
     pub id: String,
     /// `error` or `warning`.
     pub severity: &'static str,
@@ -115,7 +110,7 @@ pub fn run(req: Request) -> Response {
     let issues = |list: Vec<FileIssue>| -> Vec<OutIssue> {
         list.into_iter()
             .map(|i| OutIssue {
-                line: texts.get(&absolute(&i.file)).map_or(1, |text| line_of(text, &i.id)),
+                line: i.line,
                 file: i.file,
                 id: i.id,
                 severity: i.severity.as_str(),
@@ -214,33 +209,27 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
 
-    const MACHINE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<xmi:XMI xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20161101">
-  <uml:Model xmi:id="m" name="Main">
-    <packagedElement xmi:type="uml:StateMachine" xmi:id="sm" name="Main">
-      <region xmi:type="uml:Region" xmi:id="r">
-        <subvertex xmi:type="uml:Pseudostate" xmi:id="i" kind="initial"/>
-        <subvertex xmi:type="uml:State" xmi:id="A" name="A" submachine="sub/Sub.fsm#sub"/>
-        <transition xmi:type="uml:Transition" xmi:id="t0" source="i" target="A"/>
-      </region>
-    </packagedElement>
-  </uml:Model>
-</xmi:XMI>
+    const MACHINE: &str = r#"{
+  "format": 1,
+  "name": "Main",
+  "type": "behavioral",
+  "initial": { "target": "A" },
+  "elements": [
+    { "name": "A", "type": "state", "submachine": "sub/Sub.fsm" }
+  ]
+}
 "#;
 
-    const SUB: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<xmi:XMI xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20161101">
-  <uml:Model xmi:id="m" name="Sub">
-    <packagedElement xmi:type="uml:StateMachine" xmi:id="sub" name="Sub">
-      <region xmi:type="uml:Region" xmi:id="r">
-        <subvertex xmi:type="uml:Pseudostate" xmi:id="i" kind="initial"/>
-        <subvertex xmi:type="uml:State" xmi:id="S" name="S"/>
-        <subvertex xmi:type="uml:State" xmi:id="X" name=""/>
-        <transition xmi:type="uml:Transition" xmi:id="t0" source="i" target="S"/>
-      </region>
-    </packagedElement>
-  </uml:Model>
-</xmi:XMI>
+    const SUB: &str = r#"{
+  "format": 1,
+  "name": "Sub",
+  "type": "behavioral",
+  "initial": { "target": "S" },
+  "elements": [
+    { "name": "S", "type": "state" },
+    { "name": "X", "type": "state" }
+  ]
+}
 "#;
 
     const TEMPLATE: &str =
@@ -274,10 +263,27 @@ mod tests {
         assert_eq!(r["files"][0]["content"], "Main: 1\n");
         assert_eq!(r["files"][0]["source"], "Main.fsm");
         assert_eq!(r["files"][0]["modelHash"].as_str().unwrap().len(), 16);
-        // The submachine's unnamed state, at its line in its file, displayed relative to cwd.
+        // The submachine's state that can never be entered, at its line in its file, displayed relative to cwd.
         assert_eq!(r["issues"][0]["file"], "sub/Sub.fsm");
         assert_eq!(r["issues"][0]["line"], 8);
+        assert_eq!(r["issues"][0]["id"], "X");
         assert_eq!(r["issues"][0]["severity"], "warning");
+    }
+
+    #[test]
+    fn a_submachine_point_named_like_its_initial_pseudostate() {
+        // Sub's point `initial` has the id `Sub.initial~2` (its initial pseudostate took `Sub.initial`).
+        let main = r#"{ "format": 1, "name": "Main", "type": "behavioral", "initial": { "target": "A" },
+  "elements": [
+    { "name": "A", "type": "state", "transitions": [{ "type": "external", "trigger": "go", "target": "U.initial" }] },
+    { "name": "U", "type": "state", "submachine": "Sub.fsm", "points": [{ "name": "initial", "type": "entryPoint" }] }
+  ] }"#;
+        let sub = r#"{ "format": 1, "name": "Sub", "type": "behavioral",
+  "points": [{ "name": "initial", "type": "entryPoint", "transitions": [{ "type": "external", "target": "S" }] }],
+  "initial": { "target": "S" }, "elements": [{ "name": "S", "type": "state" }] }"#;
+        let r = call(request(json!({ "/w/Main.fsm": main, "/w/Sub.fsm": sub }), "t.jinja"));
+        assert_eq!(r["exitCode"], 0, "{r}");
+        assert_eq!(r["files"][0]["content"], "Main: 1\n");
     }
 
     #[test]
@@ -286,6 +292,7 @@ mod tests {
         assert_eq!(r["exitCode"], 1);
         assert_eq!(r["issues"][0]["message"], "sub/Sub.fsm does not exist or cannot be read.");
         assert_eq!(r["issues"][0]["line"], 7);
+        assert_eq!(r["issues"][0]["id"], "A");
         assert_eq!(r["error"], "2 errors in the state machine; nothing was generated.");
 
         let r = call(request(json!({}), "ts.hbs"));

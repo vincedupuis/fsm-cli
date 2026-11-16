@@ -1,4 +1,4 @@
-//! Paths: resolving and displaying them, decoding hrefs, expanding glob
+//! Paths: resolving and displaying them, expanding glob
 //! patterns (PowerShell and cmd don't expand them, so the program does).
 
 use std::path::{Component, Path, PathBuf};
@@ -54,55 +54,6 @@ pub fn display(p: &Path) -> String {
         Ok(rel) if !rel.as_os_str().is_empty() => slash(&rel.to_string_lossy()),
         _ => slash(&p.to_string_lossy()),
     }
-}
-
-/// The byte of the `%XX` escape at `i`, if there is one.
-fn escape_at(bytes: &[u8], i: usize) -> Option<u8> {
-    if bytes.get(i) != Some(&b'%') {
-        return None;
-    }
-    let h = (*bytes.get(i + 1)? as char).to_digit(16)?;
-    let l = (*bytes.get(i + 2)? as char).to_digit(16)?;
-    Some((h * 16 + l) as u8)
-}
-
-/// `decodeURI`: decodes `%XX` escapes (UTF-8), except those of reserved characters (`;/:@&=+$,`; unlike
-/// `decodeURI`, `%23` and `%3F` give `#` and `?`, which hrefs encode in file names). Malformed escapes are kept as
-/// they are.
-pub fn decode_uri(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if let Some(b) = escape_at(bytes, i) {
-            let len = match b {
-                0x00..=0x7f => 1,
-                0xc0..=0xdf => 2,
-                0xe0..=0xef => 3,
-                0xf0..=0xf7 => 4,
-                _ => 0,
-            };
-            let mut run = vec![b];
-            let mut j = i + 3;
-            while run.len() < len {
-                let Some(c) = escape_at(bytes, j) else { break };
-                run.push(c);
-                j += 3;
-            }
-            if let Ok(text) = std::str::from_utf8(&run) {
-                if len == 1 && ";/:@&=+$,".contains(text) {
-                    out.extend_from_slice(&bytes[i..j]);
-                } else {
-                    out.extend_from_slice(text.as_bytes());
-                }
-                i = j;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 // ------------------------------------------------------------------ globs
@@ -266,13 +217,6 @@ mod tests {
         assert!(m("x/**", "x/y/a.fsm"));
         assert!(m("[a-c]?.fsm", "bz.fsm"));
         assert!(!m("[!a-c]?.fsm", "bz.fsm"));
-    }
-
-    #[test]
-    fn uris() {
-        assert_eq!(decode_uri("My%20Machine.fsm"), "My Machine.fsm");
-        assert_eq!(decode_uri("a%23b%2Fc%3F"), "a#b%2Fc?");
-        assert_eq!(decode_uri("caf%C3%A9%zz"), "café%zz");
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! functions without arguments; the parentheses only mark the call.
 //!
 //! ```text
-//! actions   := call (';' call)*                      entry, exit, do, effect
+//! actions   := call (';' call)*                      entry, exit, do, action
 //! condition := or                                     guard, invariant, pre/postcondition
 //! or        := and ('||' and)*
 //! and       := unary ('&&' unary)*

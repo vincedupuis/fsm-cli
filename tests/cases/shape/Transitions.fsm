@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "name": "Transitions",
+  "type": "behavioral",
+  "elements": [
+    {
+      "name": "A",
+      "type": "state",
+      "transitions": [
+        {
+          "type": "external"
+        },
+        {
+          "type": "internal",
+          "target": "A"
+        },
+        {
+          "trigger": "x"
+        },
+        {
+          "type": "local"
+        }
+      ]
+    }
+  ]
+}

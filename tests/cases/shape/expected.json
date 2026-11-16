@@ -1,0 +1,339 @@
+{
+  "BadEscape.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "Invalid escape in a text.",
+      "severity": "error"
+    }
+  ],
+  "BadNumber.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "Invalid number.",
+      "severity": "error"
+    }
+  ],
+  "ControlChar.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "Control character '\\u0009' in a text: write it as an escape.",
+      "severity": "error"
+    }
+  ],
+  "Empty.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "Unexpected end of the file.",
+      "severity": "error"
+    }
+  ],
+  "FormatText.fsm": [
+    {
+      "id": "",
+      "line": 2,
+      "message": "Field 'format' must be 1.",
+      "severity": "error"
+    }
+  ],
+  "Kinds.fsm": [
+    {
+      "id": "",
+      "line": 5,
+      "message": "Field 'documentation' must be a text.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 8,
+      "message": "Field 'initial' must be an object.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 10,
+      "message": "Items of 'points' must be objects.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 16,
+      "message": "Field 'entry' must be a text.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 19,
+      "message": "Field 'defer' must be a text.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 20,
+      "message": "Field 'transitions' must be a list.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 24,
+      "message": "Items of 'elements' must be objects.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 26,
+      "message": "Field 'name' must be a text.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 28,
+      "message": "Field 'points' must be a list.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 29,
+      "message": "Field 'elements' must be a list.",
+      "severity": "error"
+    }
+  ],
+  "Missing.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "Missing field 'format' in the machine.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 1,
+      "message": "Missing field 'name' in the machine.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 1,
+      "message": "Missing field 'type' in the machine.",
+      "severity": "error"
+    }
+  ],
+  "Newer.fsm": [
+    {
+      "id": "",
+      "line": 2,
+      "message": "This file is in format 2: it needs a newer version of FSM Editor.",
+      "severity": "error"
+    }
+  ],
+  "NotJson.fsm": [
+    {
+      "id": "",
+      "line": 5,
+      "message": "Unexpected character '}'.",
+      "severity": "error"
+    }
+  ],
+  "NotObject.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "The file must hold a JSON object.",
+      "severity": "error"
+    }
+  ],
+  "Regions.fsm": [
+    {
+      "id": "",
+      "line": 5,
+      "message": "Field 'regions' must be a list.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 10,
+      "message": "Field 'regions' needs two regions or more: the fields of a single region go directly in its owner.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 15,
+      "message": "Field 'initial' cannot be used with 'regions': each region has its own.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 21,
+      "message": "Missing field 'name' in a region.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 24,
+      "message": "Items of 'regions' must be objects.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 27,
+      "message": "Unknown field 'regions' in a region.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 6,
+      "message": "Field 'elements' cannot be used with 'regions': each region has its own.",
+      "severity": "error"
+    }
+  ],
+  "Schema.fsm": [],
+  "SchemaInside.fsm": [
+    {
+      "id": "",
+      "line": 12,
+      "message": "Unknown field '$schema' in a state.",
+      "severity": "error"
+    }
+  ],
+  "Trailing.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "Unexpected character 'x'.",
+      "severity": "error"
+    }
+  ],
+  "Transitions.fsm": [
+    {
+      "id": "",
+      "line": 10,
+      "message": "Missing field 'target' in a transition.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 15,
+      "message": "An internal transition has no 'target'.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 17,
+      "message": "Missing field 'type' in a transition.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 20,
+      "message": "Missing field 'target' in a transition.",
+      "severity": "error"
+    }
+  ],
+  "Truncated.fsm": [
+    {
+      "id": "",
+      "line": 3,
+      "message": "Unexpected end of the file in a text.",
+      "severity": "error"
+    }
+  ],
+  "TwiceField.fsm": [
+    {
+      "id": "",
+      "line": 4,
+      "message": "Field 'name' is given twice.",
+      "severity": "error"
+    }
+  ],
+  "Unknown.fsm": [
+    {
+      "id": "",
+      "line": 5,
+      "message": "Unknown field 'context' in the machine.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 13,
+      "message": "Unknown field 'gaurd' in a transition.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 17,
+      "message": "Unknown field 'colour' in a state.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 22,
+      "message": "Unknown field 'entry' in a choice.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 31,
+      "message": "Unknown field 'via' in a comment anchor.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 33,
+      "message": "Items of 'anchors' must be texts or objects.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 43,
+      "message": "Unknown field 'extra' in a point.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 48,
+      "message": "Unknown field 'guard' in 'initial'.",
+      "severity": "error"
+    }
+  ],
+  "Values.fsm": [
+    {
+      "id": "",
+      "line": 4,
+      "message": "Field 'type' must be \"behavioral\" or \"protocol\".",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 8,
+      "message": "Field 'type' must be \"state\", \"choice\", \"junction\", \"fork\", \"join\", \"final\", \"terminate\" or \"comment\".",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 10,
+      "message": "Missing field 'type' in an element.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 13,
+      "message": "Missing field 'name' in a state.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 21,
+      "message": "Field 'type' must be \"external\", \"internal\" or \"local\".",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 28,
+      "message": "Field 'type' must be \"entryPoint\" or \"exitPoint\".",
+      "severity": "error"
+    }
+  ]
+}

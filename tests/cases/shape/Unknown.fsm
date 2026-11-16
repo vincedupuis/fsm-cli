@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "name": "Unknown",
+  "type": "behavioral",
+  "context": "Ctx",
+  "elements": [
+    {
+      "name": "A",
+      "type": "state",
+      "transitions": [
+        {
+          "type": "external",
+          "gaurd": "x()",
+          "target": "B"
+        }
+      ],
+      "colour": "red"
+    },
+    {
+      "name": "c",
+      "type": "choice",
+      "entry": "x()"
+    },
+    {
+      "name": "n",
+      "type": "comment",
+      "anchors": [
+        "A",
+        {
+          "source": "A",
+          "via": "B"
+        },
+        3
+      ]
+    },
+    {
+      "name": "B",
+      "type": "state",
+      "points": [
+        {
+          "name": "p",
+          "type": "entryPoint",
+          "extra": 1
+        }
+      ],
+      "initial": {
+        "target": "A",
+        "guard": "g()"
+      }
+    }
+  ]
+}

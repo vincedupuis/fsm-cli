@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "name": "Text",
+  "type": "behavioral",
+  "initial": {
+    "target": "A",
+    "action": "init("
+  },
+  "elements": [
+    {
+      "name": "A",
+      "type": "state",
+      "transitions": [
+        {
+          "type": "external",
+          "trigger": "go now",
+          "guard": "a() &&",
+          "action": "x(1)",
+          "precondition": "p(",
+          "postcondition": "&&",
+          "target": "B"
+        }
+      ],
+      "entry": "start(",
+      "exit": "1x()",
+      "do": "run();;",
+      "invariant": "ok() ||",
+      "stereotype": "Bad Name",
+      "defer": "e1, 2bad"
+    },
+    {
+      "name": "B",
+      "type": "state"
+    }
+  ]
+}

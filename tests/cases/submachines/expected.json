@@ -1,0 +1,134 @@
+{
+  "Broken.fsm": [
+    {
+      "id": "",
+      "line": 5,
+      "message": "Missing field 'type' in an element.",
+      "severity": "error"
+    }
+  ],
+  "Main.fsm": [
+    {
+      "id": "Gone",
+      "line": 90,
+      "message": "Missing.fsm does not exist or cannot be read.",
+      "severity": "error"
+    },
+    {
+      "id": "Broken",
+      "line": 95,
+      "message": "Broken.fsm is not a valid state machine file.",
+      "severity": "error"
+    },
+    {
+      "id": "Run.done~2",
+      "line": 84,
+      "message": "'Run' has two points named 'done'.",
+      "severity": "error"
+    },
+    {
+      "id": "Run.again",
+      "line": 46,
+      "message": "Entry reference 'again' cannot have outgoing transitions; execution continues at the entry point inside the submachine.",
+      "severity": "error"
+    },
+    {
+      "id": "Run#2",
+      "line": 38,
+      "message": "Transitions into entry reference 'again' must come from outside 'Run'.",
+      "severity": "error"
+    },
+    {
+      "id": "Run.done",
+      "line": 56,
+      "message": "Exit reference 'done' cannot have incoming transitions; it is reached when the submachine leaves through its exit point.",
+      "severity": "error"
+    },
+    {
+      "id": "Run.nothere",
+      "line": 66,
+      "message": "'Sub' has no entry or exit point named 'nothere'.",
+      "severity": "error"
+    },
+    {
+      "id": "Run.quit",
+      "line": 76,
+      "message": "'quit' is an exit point of 'Sub', but it is referenced as an entry point.",
+      "severity": "error"
+    },
+    {
+      "id": "Run.quit",
+      "line": 76,
+      "message": "Entry reference 'quit' has no incoming transition.",
+      "severity": "warning"
+    },
+    {
+      "id": "Run.",
+      "line": 80,
+      "message": "The connection point reference does not refer to an entry or exit point of the submachine.",
+      "severity": "error"
+    },
+    {
+      "id": "Run.",
+      "line": 80,
+      "message": "Exit reference connection point reference has no outgoing transition.",
+      "severity": "warning"
+    },
+    {
+      "id": "Run.done~2",
+      "line": 84,
+      "message": "Exit reference 'done' has no outgoing transition.",
+      "severity": "warning"
+    },
+    {
+      "id": "Run.done~2",
+      "line": 84,
+      "message": "'Run' already references 'done'.",
+      "severity": "warning"
+    },
+    {
+      "id": "Gone",
+      "line": 90,
+      "message": "The referenced state machine 'Missing.fsm' was not found.",
+      "severity": "error"
+    },
+    {
+      "id": "Broken",
+      "line": 95,
+      "message": "The referenced state machine 'Broken.fsm' was not found.",
+      "severity": "error"
+    },
+    {
+      "id": "Both",
+      "line": 100,
+      "message": "Submachine state 'Both' cannot also own regions.",
+      "severity": "error"
+    },
+    {
+      "id": "Gone",
+      "line": 90,
+      "message": "State 'Gone' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Broken",
+      "line": 95,
+      "message": "State 'Broken' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Both",
+      "line": 100,
+      "message": "State 'Both' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Z",
+      "line": 108,
+      "message": "State 'Z' can never be entered.",
+      "severity": "warning"
+    }
+  ],
+  "Self.fsm": [],
+  "Sub.fsm": []
+}

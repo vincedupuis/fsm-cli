@@ -192,7 +192,7 @@ export interface {{ machine.name }}Options {
    * Tracing, e.g. to a log for FSM Editor's Trace Player: called for each event processed, state entered or left, and
    * transition taken (each segment of a compound transition, so the branches taken at choices and junctions too).
    * `machine` is the machine's name, followed for a submachine by the submachine states leading to it
-   * (`{{ machine.name }}.State`); `id` is the xmi:id of the state or transition (the name of an event), and `name` its name.
+   * (`{{ machine.name }}.State`); `id` is the id of the state or transition in its .fsm file (`Off`, `Off#1`; the name of an event), and `name` its name.
    */
   onTrace?(machine: string, kind: {{ machine.name }}TraceKind, id: string, name: string): void;
 }
@@ -235,7 +235,7 @@ const COMPLETION = 0;
 const EXIT_POINT = 1;
 
 const STATE_NAMES: readonly {{ machine.name }}State[] = [{{ states | map(attribute="name") | map("quote") | join(", ") }}];
-/** xmi:id of each state, for tracing. */
+/** Id of each state in the .fsm file, for tracing. */
 const STATE_IDS: readonly string[] = [{{ states | map(attribute="id") | map("quote") | join(", ") }}];
 /** Region containing each state. */
 const REGION_OF: readonly number[] = [{{ states | map(attribute="regionIndex") | join(", ") }}];

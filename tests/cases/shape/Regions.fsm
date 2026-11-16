@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "Regions",
+  "type": "behavioral",
+  "regions": "no",
+  "elements": [
+    {
+      "name": "A",
+      "type": "state",
+      "regions": [
+        {
+          "name": "only"
+        }
+      ],
+      "initial": {}
+    },
+    {
+      "name": "B",
+      "type": "state",
+      "regions": [
+        {
+          "elements": []
+        },
+        "r",
+        {
+          "name": "x",
+          "regions": []
+        }
+      ]
+    }
+  ]
+}

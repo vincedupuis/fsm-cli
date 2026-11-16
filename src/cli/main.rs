@@ -1,7 +1,5 @@
 //! `fsm`, the command-line tool of FSM Editor: `fsm <command> [options]`. One module per command.
 
-mod diff;
-mod merge;
 mod write;
 
 use std::process::ExitCode;
@@ -12,8 +10,6 @@ The command-line tool of FSM Editor, for UML state machines (.fsm files).
 
 Commands:
   write    Generates code from state machines with a Jinja template.
-  diff     Compares two versions of a state machine.
-  merge    Merges two versions of a state machine made from a common one.
 
 Run 'fsm <command> --help' for the options of a command.
 
@@ -24,12 +20,10 @@ Options:
 /// Why the program stops.
 #[derive(Debug, PartialEq)]
 pub enum Failure {
-    /// Bad usage: exit code 2. `command` names the help that explains it (`write`, `diff`, or "" for `fsm --help`).
+    /// Bad usage: exit code 2. `command` names the help that explains it (`write`, or "" for `fsm --help`).
     Usage { message: String, command: &'static str },
     /// Exit code 1.
     Error(String),
-    /// Exit code 1, after a report that says why (`merge`: conflicts remain).
-    Conflicts,
 }
 
 fn version() {
@@ -45,8 +39,6 @@ fn run(argv: &[String]) -> Result<(), Failure> {
     let args = &argv[1..];
     match command.as_str() {
         "write" => write::main(args),
-        "diff" => diff::main(args),
-        "merge" => merge::main(args),
         "-h" | "--help" => {
             println!("{USAGE}");
             Ok(())
@@ -73,7 +65,6 @@ fn main() -> ExitCode {
             eprintln!("fsm: {message}");
             ExitCode::from(1)
         }
-        Err(Failure::Conflicts) => ExitCode::from(1),
     }
 }
 
@@ -90,6 +81,8 @@ mod tests {
         let usage = |m: &str| Err(Failure::Usage { message: m.to_string(), command: "" });
         assert_eq!(run(&args(&[])), usage("No command given."));
         assert_eq!(run(&args(&["generate"])), usage("Unknown command 'generate'."));
+        assert_eq!(run(&args(&["diff", "a.fsm", "b.fsm"])), usage("Unknown command 'diff'."));
+        assert_eq!(run(&args(&["merge"])), usage("Unknown command 'merge'."));
         assert_eq!(run(&args(&["x.fsm", "-t", "ts"])), usage("Unknown command 'x.fsm'."));
         assert_eq!(run(&args(&["--template", "ts"])), usage("Unknown option --template."));
     }

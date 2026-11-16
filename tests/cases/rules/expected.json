@@ -1,0 +1,559 @@
+{
+  "Clean.fsm": [],
+  "Cycles.fsm": [
+    {
+      "id": "j1*",
+      "line": 20,
+      "message": "Junctions and choices form a cycle without a state: 'j1*' -> 'c1*' -> 'j1*'.",
+      "severity": "error"
+    }
+  ],
+  "DefaultEntry.fsm": [
+    {
+      "id": "Comp",
+      "line": 20,
+      "message": "'Comp' is entered by default but its region has no initial pseudostate.",
+      "severity": "warning"
+    },
+    {
+      "id": "X",
+      "line": 24,
+      "message": "State 'X' can never be entered.",
+      "severity": "warning"
+    }
+  ],
+  "Names.fsm": [
+    {
+      "id": "A.",
+      "line": 20,
+      "message": "Every entry point needs a name.",
+      "severity": "error"
+    },
+    {
+      "id": "A.p.q",
+      "line": 24,
+      "message": "Name 'p.q' cannot contain '.'.",
+      "severity": "error"
+    },
+    {
+      "id": "A.history",
+      "line": 28,
+      "message": "A point cannot be named 'history'.",
+      "severity": "error"
+    },
+    {
+      "id": "A.e~2",
+      "line": 36,
+      "message": "'A' has two points named 'e'.",
+      "severity": "error"
+    },
+    {
+      "id": "a*b",
+      "line": 49,
+      "message": "Name 'a*b' can contain '*' only as its last character.",
+      "severity": "error"
+    },
+    {
+      "id": "~",
+      "line": 55,
+      "message": "Every state needs a name.",
+      "severity": "error"
+    },
+    {
+      "id": "C.D",
+      "line": 59,
+      "message": "Name 'C.D' cannot contain '.'.",
+      "severity": "error"
+    },
+    {
+      "id": "Waiting for payment",
+      "line": 63,
+      "message": "Name 'Waiting for payment' cannot contain spaces.",
+      "severity": "error"
+    },
+    {
+      "id": "Names",
+      "line": 67,
+      "message": "Name 'Names' is used more than once in the state machine.",
+      "severity": "error"
+    },
+    {
+      "id": "A~2",
+      "line": 71,
+      "message": "Name 'A' is used more than once in the state machine.",
+      "severity": "error"
+    },
+    {
+      "id": "a*b",
+      "line": 49,
+      "message": "State 'a*b' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "~",
+      "line": 55,
+      "message": "State state can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "C.D",
+      "line": 59,
+      "message": "State 'C.D' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Waiting for payment",
+      "line": 63,
+      "message": "State 'Waiting for payment' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Names",
+      "line": 67,
+      "message": "State 'Names' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "A~2",
+      "line": 71,
+      "message": "State 'A' can never be entered.",
+      "severity": "warning"
+    }
+  ],
+  "Points.fsm": [
+    {
+      "id": "Simple.in",
+      "line": 36,
+      "message": "Only composite states can have entry/exit points; add a region to 'Simple'.",
+      "severity": "warning"
+    },
+    {
+      "id": "C.in#1",
+      "line": 57,
+      "message": "Transitions leaving entry point 'in' must target a vertex inside 'C'.",
+      "severity": "error"
+    },
+    {
+      "id": "C.out#1",
+      "line": 67,
+      "message": "Transitions leaving exit point 'out' must target a vertex outside 'C'.",
+      "severity": "error"
+    },
+    {
+      "id": "Points.start",
+      "line": 9,
+      "message": "Entry point 'start' of the state machine has no outgoing transition.",
+      "severity": "warning"
+    },
+    {
+      "id": "Points.stop#1",
+      "line": 17,
+      "message": "Exit point 'stop' of the state machine cannot have outgoing transitions; the referencing submachine state continues from its connection point reference.",
+      "severity": "error"
+    }
+  ],
+  "Protocol.fsm": [
+    {
+      "id": "A",
+      "line": 9,
+      "message": "States of a protocol state machine cannot have entry/exit/do behaviors ('A').",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 13,
+      "message": "Protocol transitions cannot have actions.",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 13,
+      "message": "Use a precondition instead of a guard in a protocol state machine.",
+      "severity": "warning"
+    }
+  ],
+  "Pseudostates.fsm": [
+    {
+      "id": "Pseudostates.history",
+      "line": 8,
+      "message": "History pseudostates are only meaningful inside a composite state.",
+      "severity": "warning"
+    },
+    {
+      "id": "fork1*#2",
+      "line": 41,
+      "message": "Transitions leaving a fork cannot have guards or triggers.",
+      "severity": "error"
+    },
+    {
+      "id": "join1*",
+      "line": 49,
+      "message": "A join must have exactly one outgoing transition.",
+      "severity": "error"
+    },
+    {
+      "id": "O#1",
+      "line": 102,
+      "message": "Transitions entering a join cannot have guards or triggers.",
+      "severity": "error"
+    },
+    {
+      "id": "choice1*",
+      "line": 63,
+      "message": "Every branch of a choice with several outgoing transitions should have a guard.",
+      "severity": "warning"
+    },
+    {
+      "id": "choice1*",
+      "line": 63,
+      "message": "Consider an [else] branch so the choice can always be left.",
+      "severity": "info"
+    },
+    {
+      "id": "choice2*",
+      "line": 78,
+      "message": "A choice must have at least one incoming transition.",
+      "severity": "error"
+    },
+    {
+      "id": "choice2*",
+      "line": 78,
+      "message": "A choice must have at least one outgoing transition.",
+      "severity": "error"
+    },
+    {
+      "id": "fork2*",
+      "line": 149,
+      "message": "A fork must have exactly one incoming transition.",
+      "severity": "error"
+    },
+    {
+      "id": "fork2*",
+      "line": 149,
+      "message": "A fork must have at least two outgoing transitions.",
+      "severity": "error"
+    },
+    {
+      "id": "join2*",
+      "line": 193,
+      "message": "The sources of a join should be in different orthogonal regions.",
+      "severity": "warning"
+    },
+    {
+      "id": "fork3*",
+      "line": 205,
+      "message": "The targets of a fork should be in different orthogonal regions.",
+      "severity": "warning"
+    },
+    {
+      "id": "fork1*#2",
+      "line": 41,
+      "message": "Transitions leaving a pseudostate cannot have triggers (from 'fork1*').",
+      "severity": "error"
+    },
+    {
+      "id": "Two",
+      "line": 159,
+      "message": "State 'Two' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "P",
+      "line": 173,
+      "message": "State 'P' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Q",
+      "line": 183,
+      "message": "State 'Q' can never be entered.",
+      "severity": "warning"
+    }
+  ],
+  "Reachability.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "The top-level region has no initial pseudostate.",
+      "severity": "warning"
+    }
+  ],
+  "References.fsm": [
+    {
+      "id": "References.initial",
+      "line": 5,
+      "message": "The initial pseudostate has no target.",
+      "severity": "error"
+    },
+    {
+      "id": "References.out#1",
+      "line": 11,
+      "message": "Exit point 'out' of the state machine cannot have outgoing transitions; the referencing submachine state continues from its connection point reference.",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 23,
+      "message": "Transition target 'Nowhere' does not exist.",
+      "severity": "error"
+    },
+    {
+      "id": "A#2",
+      "line": 28,
+      "message": "Transition target 'A.nope' does not exist.",
+      "severity": "error"
+    },
+    {
+      "id": "A#4",
+      "line": 38,
+      "message": "Transition target 'B.deepHistory' does not exist.",
+      "severity": "error"
+    },
+    {
+      "id": "A#7",
+      "line": 53,
+      "message": "Comments cannot be connected by transitions.",
+      "severity": "error"
+    },
+    {
+      "id": "B.initial#1",
+      "line": 63,
+      "message": "Transition target 'Missing' does not exist.",
+      "severity": "error"
+    },
+    {
+      "id": "B.history#1",
+      "line": 66,
+      "message": "The default transition of a history pseudostate has no target.",
+      "severity": "error"
+    },
+    {
+      "id": "A",
+      "line": 19,
+      "message": "State 'A' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "B",
+      "line": 60,
+      "message": "State 'B' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "C",
+      "line": 70,
+      "message": "State 'C' can never be entered.",
+      "severity": "warning"
+    }
+  ],
+  "Regions.fsm": [
+    {
+      "id": "~",
+      "line": 49,
+      "message": "Every region needs a name.",
+      "severity": "error"
+    },
+    {
+      "id": "left~2",
+      "line": 36,
+      "message": "Name 'left' is used more than once in the state machine.",
+      "severity": "error"
+    },
+    {
+      "id": ".history",
+      "line": 51,
+      "message": "History pseudostates are only meaningful inside a composite state.",
+      "severity": "warning"
+    },
+    {
+      "id": "O",
+      "line": 23,
+      "message": "'O' is entered by default but its region 'r1' has no initial pseudostate.",
+      "severity": "warning"
+    },
+    {
+      "id": "O",
+      "line": 23,
+      "message": "'O' is entered by default but its region 'left' has no initial pseudostate.",
+      "severity": "warning"
+    },
+    {
+      "id": "",
+      "line": 1,
+      "message": "The top-level region has no initial pseudostate.",
+      "severity": "warning"
+    },
+    {
+      "id": "X",
+      "line": 30,
+      "message": "State 'X' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Y",
+      "line": 39,
+      "message": "State 'Y' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "B",
+      "line": 53,
+      "message": "State 'B' can never be entered.",
+      "severity": "warning"
+    }
+  ],
+  "Text.fsm": [
+    {
+      "id": "A#1",
+      "line": 14,
+      "message": "Pre/postconditions only apply to protocol state machines and are ignored.",
+      "severity": "warning"
+    },
+    {
+      "id": "A",
+      "line": 10,
+      "message": "entry of 'A': Functions take no arguments: write start().",
+      "severity": "error"
+    },
+    {
+      "id": "A",
+      "line": 10,
+      "message": "exit of 'A': '1' is not allowed: the state machine has no variables, so use function calls like isReady() combined with !, && and ||.",
+      "severity": "error"
+    },
+    {
+      "id": "A",
+      "line": 10,
+      "message": "do of 'A': Expected a function call.",
+      "severity": "error"
+    },
+    {
+      "id": "A",
+      "line": 10,
+      "message": "Invariant of 'A': Expected a function call.",
+      "severity": "error"
+    },
+    {
+      "id": "A",
+      "line": 10,
+      "message": "Stereotype of 'A': 'Bad Name' is not a valid name: use letters, digits and _ only, not starting with a digit.",
+      "severity": "error"
+    },
+    {
+      "id": "A",
+      "line": 10,
+      "message": "Deferrable event of 'A': '2bad' is not a valid event name (letters, digits and _ only).",
+      "severity": "error"
+    },
+    {
+      "id": "Text.initial#1",
+      "line": 5,
+      "message": "Action: Functions take no arguments: write init().",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 14,
+      "message": "Trigger: 'go now' is not a valid event name (letters, digits and _ only).",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 14,
+      "message": "Guard: Expected a function call.",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 14,
+      "message": "Action: '1' is not allowed: the state machine has no variables, so use function calls like isReady() combined with !, && and ||.",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 14,
+      "message": "Precondition: Functions take no arguments: write p().",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 14,
+      "message": "Postcondition: Expected a function call, found '&&'.",
+      "severity": "error"
+    }
+  ],
+  "Transitions.fsm": [
+    {
+      "id": "choice1*",
+      "line": 56,
+      "message": "A choice must have at least one incoming transition.",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 13,
+      "message": "'A' has several completion transitions without triggers or guards.",
+      "severity": "warning"
+    },
+    {
+      "id": "A#2",
+      "line": 17,
+      "message": "'A' has several completion transitions without triggers or guards.",
+      "severity": "warning"
+    },
+    {
+      "id": "A#4",
+      "line": 26,
+      "message": "A local transition must go from a composite state to a vertex it contains.",
+      "severity": "error"
+    },
+    {
+      "id": "A#5",
+      "line": 31,
+      "message": "Pre/postconditions only apply to protocol state machines and are ignored.",
+      "severity": "warning"
+    },
+    {
+      "id": "choice1*#1",
+      "line": 60,
+      "message": "Transitions leaving a pseudostate cannot have triggers (from 'choice1*').",
+      "severity": "error"
+    },
+    {
+      "id": "choice1*#2",
+      "line": 66,
+      "message": "An internal transition must start and end on the same state.",
+      "severity": "error"
+    },
+    {
+      "id": "C#1",
+      "line": 75,
+      "message": "Transition target 'C.' does not exist.",
+      "severity": "error"
+    },
+    {
+      "id": "B#2",
+      "line": 49,
+      "message": "Trigger: Time triggers are written after(<number><unit>) with unit ms, s, m or h, e.g. after(500ms) or after(2s).",
+      "severity": "error"
+    },
+    {
+      "id": "choice1*#1",
+      "line": 60,
+      "message": "Time triggers (after) can only be used on transitions leaving a state.",
+      "severity": "error"
+    },
+    {
+      "id": "C",
+      "line": 71,
+      "message": "State 'C' can never be entered.",
+      "severity": "warning"
+    },
+    {
+      "id": "Inner",
+      "line": 90,
+      "message": "State 'Inner' can never be entered.",
+      "severity": "warning"
+    }
+  ]
+}

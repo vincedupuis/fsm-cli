@@ -1,0 +1,570 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/vincedupuis/fsm-cli/blob/main/schemas/fsm.schema.json",
+  "title": "FSM Editor state machine (.fsm), format 1",
+  "description": "A UML state machine, without its layout (that is the .fsm.layout file beside it). See the README of fsm-cli, \"The .fsm file format\".",
+  "type": "object",
+  "required": [
+    "format",
+    "name",
+    "type"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "const": 1,
+      "description": "The version of the format: 1."
+    },
+    "name": {
+      "type": "string",
+      "description": "The state machine's name, unique among the names of the file. No spaces, no '.'."
+    },
+    "type": {
+      "enum": [
+        "behavioral",
+        "protocol"
+      ],
+      "description": "A behavioral or a protocol state machine."
+    },
+    "documentation": {
+      "type": "string",
+      "description": "Documentation of the state machine."
+    },
+    "points": {
+      "type": "array",
+      "description": "The state machine's own entry and exit points, which submachine states use.",
+      "items": {
+        "$ref": "#/definitions/point"
+      }
+    },
+    "initial": {
+      "$ref": "#/definitions/initial"
+    },
+    "history": {
+      "$ref": "#/definitions/history"
+    },
+    "deepHistory": {
+      "$ref": "#/definitions/deepHistory"
+    },
+    "elements": {
+      "type": "array",
+      "description": "The region's elements: states, pseudostates and comments.",
+      "items": {
+        "$ref": "#/definitions/element"
+      }
+    },
+    "regions": {
+      "type": "array",
+      "minItems": 2,
+      "description": "Two regions or more (orthogonal regions). A single region's fields go directly in its owner.",
+      "items": {
+        "$ref": "#/definitions/region"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "dependencies": {
+    "regions": {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "initial"
+            ]
+          },
+          {
+            "required": [
+              "history"
+            ]
+          },
+          {
+            "required": [
+              "deepHistory"
+            ]
+          },
+          {
+            "required": [
+              "elements"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "initial": {
+      "type": "object",
+      "description": "The initial pseudostate of the region, and its transition.",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "What it enters: a reference."
+        },
+        "action": {
+          "type": "string",
+          "description": "Action of the transition: argument-less calls separated by '; '."
+        }
+      },
+      "additionalProperties": false
+    },
+    "history": {
+      "type": "object",
+      "description": "A shallow history pseudostate, with its default transition when it has one.",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "The default history state: a reference."
+        },
+        "action": {
+          "type": "string",
+          "description": "Action of the default transition."
+        }
+      },
+      "additionalProperties": false
+    },
+    "deepHistory": {
+      "type": "object",
+      "description": "A deep history pseudostate, with its default transition when it has one.",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "The default history state: a reference."
+        },
+        "action": {
+          "type": "string",
+          "description": "Action of the default transition."
+        }
+      },
+      "additionalProperties": false
+    },
+    "region": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+        },
+        "initial": {
+          "$ref": "#/definitions/initial"
+        },
+        "history": {
+          "$ref": "#/definitions/history"
+        },
+        "deepHistory": {
+          "$ref": "#/definitions/deepHistory"
+        },
+        "elements": {
+          "type": "array",
+          "description": "The region's elements: states, pseudostates and comments.",
+          "items": {
+            "$ref": "#/definitions/element"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "element": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "state",
+              "description": "A state: simple, composite (its region's fields, or regions) or submachine state."
+            },
+            "stereotype": {
+              "type": "string",
+              "description": "A stereotype name, e.g. Critical."
+            },
+            "submachine": {
+              "type": "string",
+              "description": "Path of the .fsm file of the state machine this state runs, relative to this file."
+            },
+            "entry": {
+              "type": "string",
+              "description": "Entry behavior: argument-less calls separated by '; ', e.g. start(); log()."
+            },
+            "do": {
+              "type": "string",
+              "description": "Do activity: argument-less calls separated by '; '."
+            },
+            "exit": {
+              "type": "string",
+              "description": "Exit behavior: argument-less calls separated by '; '."
+            },
+            "defer": {
+              "type": "string",
+              "description": "Deferred events, separated by ', '."
+            },
+            "invariant": {
+              "type": "string",
+              "description": "State invariant: calls combined with !, && and ||."
+            },
+            "transitions": {
+              "type": "array",
+              "description": "The transitions leaving this element, in priority order.",
+              "items": {
+                "$ref": "#/definitions/transition"
+              }
+            },
+            "points": {
+              "type": "array",
+              "description": "Entry and exit points. On a submachine state: the points of the submachine it uses, by their names there.",
+              "items": {
+                "$ref": "#/definitions/point"
+              }
+            },
+            "initial": {
+              "$ref": "#/definitions/initial"
+            },
+            "history": {
+              "$ref": "#/definitions/history"
+            },
+            "deepHistory": {
+              "$ref": "#/definitions/deepHistory"
+            },
+            "elements": {
+              "type": "array",
+              "description": "The region's elements: states, pseudostates and comments.",
+              "items": {
+                "$ref": "#/definitions/element"
+              }
+            },
+            "regions": {
+              "type": "array",
+              "minItems": 2,
+              "description": "Two regions or more (orthogonal regions). A single region's fields go directly in its owner.",
+              "items": {
+                "$ref": "#/definitions/region"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "dependencies": {
+            "regions": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "initial"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "history"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "deepHistory"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "elements"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "choice",
+              "description": "A choice pseudostate."
+            },
+            "transitions": {
+              "type": "array",
+              "description": "The transitions leaving this element, in priority order.",
+              "items": {
+                "$ref": "#/definitions/transition"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "junction",
+              "description": "A junction pseudostate."
+            },
+            "transitions": {
+              "type": "array",
+              "description": "The transitions leaving this element, in priority order.",
+              "items": {
+                "$ref": "#/definitions/transition"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "fork",
+              "description": "A fork pseudostate."
+            },
+            "transitions": {
+              "type": "array",
+              "description": "The transitions leaving this element, in priority order.",
+              "items": {
+                "$ref": "#/definitions/transition"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "join",
+              "description": "A join pseudostate."
+            },
+            "transitions": {
+              "type": "array",
+              "description": "The transitions leaving this element, in priority order.",
+              "items": {
+                "$ref": "#/definitions/transition"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "final",
+              "description": "A final state."
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "terminate",
+              "description": "A terminate pseudostate."
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+            },
+            "type": {
+              "const": "comment",
+              "description": "A comment."
+            },
+            "text": {
+              "type": "string",
+              "description": "The comment's text."
+            },
+            "anchors": {
+              "type": "array",
+              "description": "What the comment is attached to: references, or transitions.",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "A reference."
+                  },
+                  {
+                    "$ref": "#/definitions/transitionAnchor"
+                  }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "point": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+        },
+        "type": {
+          "enum": [
+            "entryPoint",
+            "exitPoint"
+          ]
+        },
+        "transitions": {
+          "type": "array",
+          "description": "The transitions leaving this element, in priority order.",
+          "items": {
+            "$ref": "#/definitions/transition"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "external",
+            "internal",
+            "local"
+          ],
+          "description": "The transition's kind."
+        },
+        "trigger": {
+          "type": "string",
+          "description": "Triggers, separated by ', ': event names or after(<number><ms|s|m|h>)."
+        },
+        "guard": {
+          "type": "string",
+          "description": "Guard: calls combined with !, && and ||, or else on choice and junction branches."
+        },
+        "action": {
+          "type": "string",
+          "description": "Action: argument-less calls separated by '; '."
+        },
+        "precondition": {
+          "type": "string",
+          "description": "Precondition (protocol state machines)."
+        },
+        "postcondition": {
+          "type": "string",
+          "description": "Postcondition (protocol state machines)."
+        },
+        "target": {
+          "type": "string",
+          "description": "What it enters: an element's name, <owner>.<point>, <owner>.history or <owner>.deepHistory. None for an internal transition."
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "type": {
+            "const": "internal"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "target"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "target"
+        ]
+      }
+    },
+    "transitionAnchor": {
+      "type": "object",
+      "description": "A transition, by its source, trigger and target.",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Its source: a reference."
+        },
+        "trigger": {
+          "type": "string",
+          "description": "Its triggers, as the transition writes them."
+        },
+        "target": {
+          "type": "string",
+          "description": "Its target: a reference."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -89,6 +89,10 @@ pub struct CodeModel {
     pub features: CodeFeatures,
     /// The machine as nested transition tables, for frameworks without transitions across composite states (see tables.rs).
     pub tables: CodeTables,
+    /// The ids of the machine's own points by their names in the file, which connection point references name (a
+    /// generated name included, which the code model clears): set by `generate`, not in the code model.
+    #[serde(skip)]
+    pub point_ids: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,15 +101,12 @@ pub struct CodeMachine {
     /// Identifier (letters, digits, `_`).
     pub name: String,
     pub display_name: String,
-    /// xmi:id, as used in hrefs.
-    pub id: String,
     pub kind: &'static str,
     pub protocol: bool,
-    pub context: String,
     pub documentation: String,
     /// Path of the `.fsm` file, as given to the generator.
     pub source_file: String,
-    /// Hash of the model in the `.fsm` file (16 hex digits, see `model_hash` in xmi.rs); '' when not given.
+    /// Hash of the model in the `.fsm` file (16 hex digits, see `read_machine` in format.rs); '' when not given.
     pub model_hash: String,
 }
 
@@ -129,7 +130,7 @@ pub struct CodeRegion {
 #[serde(rename_all = "camelCase")]
 pub struct CodeState {
     pub index: usize,
-    /// xmi:id of the state.
+    /// Id of the state (derived from the names, see format.rs).
     pub id: String,
     /// Unique identifier among the states.
     pub name: String,
@@ -206,7 +207,7 @@ pub struct CodeCandidate {
 #[serde(rename_all = "camelCase")]
 pub struct CodeTransition {
     pub index: usize,
-    /// xmi:id of the transition leaving the source (of the join for joins).
+    /// Id of the transition leaving the source (of the join for joins), derived from the names (see format.rs).
     pub id: String,
     pub name: String,
     /// Readable description, e.g. `Paused -> Stopped (after(5m))`.
@@ -380,14 +381,14 @@ pub struct Options {
     pub submachines: HashMap<String, Rc<CodeModel>>,
     /// Path of the `.fsm` file, shown in generated comments.
     pub source_file: String,
-    /// Hash of the model in the `.fsm` file (`model_hash` in xmi.rs), shown in generated comments.
+    /// Hash of the model in the `.fsm` file (see `read_machine` in format.rs), shown in generated comments.
     pub model_hash: String,
 }
 
 /// A model the code generator can't handle.
 pub struct CodeGenError {
     pub message: String,
-    /// xmi:id of the element it is about.
+    /// Id of the element it is about (derived from the names, see format.rs).
     pub id: String,
 }
 
@@ -789,10 +790,8 @@ impl<'a> Builder<'a> {
             machine: CodeMachine {
                 name: ident(&m.name, "StateMachine"),
                 display_name: m.name.clone(),
-                id: m.id.clone(),
                 kind: m.kind.as_str(),
                 protocol: m.kind == MachineKind::Protocol,
-                context: m.context.clone(),
                 documentation: m.documentation.clone(),
                 source_file: self.options.source_file.clone(),
                 model_hash: self.options.model_hash.clone(),
@@ -814,6 +813,7 @@ impl<'a> Builder<'a> {
             start,
             features: self.features.clone(),
             tables: CodeTables::default(),
+            point_ids: HashMap::new(),
         };
         code.tables = to_tables(&code);
         Ok(code)
@@ -905,11 +905,12 @@ impl<'a> Builder<'a> {
             let owner = self.ix.vertex(&vx.parent);
             let sub = self.submachine(owner.and_then(|o| self.ix.v(o).submachine.as_deref()));
             let point = sub.and_then(|s| {
+                let id = point_id(s, &vx.point_ref);
                 s.entry_points
                     .iter()
                     .map(|p| (&p.id, &p.name))
                     .chain(s.exit_points.iter().map(|p| (&p.id, &p.name)))
-                    .find(|(id, _)| **id == vx.point_ref)
+                    .find(|(pid, _)| **pid == id)
                     .map(|(_, name)| name)
             });
             if let (Some(o), Some(point)) = (owner, point) {
@@ -1011,7 +1012,7 @@ impl<'a> Builder<'a> {
     /// effect.
     fn effect(&mut self, t: &Transition) -> Result<Vec<Step>, CodeGenError> {
         let label = self.transition_label(t);
-        let calls = self.calls(&t.effect, &format!("Effect of {label}"), &t.id, SetKind::Actions)?;
+        let calls = self.calls(&t.action, &format!("Action of {label}"), &t.id, SetKind::Actions)?;
         let mut steps = vec![Step::Transition { id: t.id.clone(), label }];
         steps.extend(calls.into_iter().map(|action| Step::Call { action }));
         Ok(steps)
@@ -1425,9 +1426,12 @@ impl<'a> Builder<'a> {
         let ov = self.ix.v(owner);
         let rv = self.ix.v(r);
         let sub = self.submachine(ov.submachine.as_deref());
-        let found = sub.and_then(|s| match kind {
-            PointKind::Entry => s.entry_points.iter().find(|p| p.id == rv.point_ref).map(|p| p.name.clone()),
-            PointKind::Exit => s.exit_points.iter().find(|p| p.id == rv.point_ref).map(|p| p.name.clone()),
+        let found = sub.and_then(|s| {
+            let id = point_id(s, &rv.point_ref);
+            match kind {
+                PointKind::Entry => s.entry_points.iter().find(|p| p.id == id).map(|p| p.name.clone()),
+                PointKind::Exit => s.exit_points.iter().find(|p| p.id == id).map(|p| p.name.clone()),
+            }
         });
         found.ok_or_else(|| {
             CodeGenError::new(
@@ -1901,4 +1905,9 @@ impl<'a> Builder<'a> {
         }
         Ok(CodeEntryPoint { name, id: vx.id.clone(), steps })
     }
+}
+
+/// The id of the connection point named `name` of a submachine, or "" when it has none.
+fn point_id(sub: &CodeModel, name: &str) -> String {
+    sub.point_ids.get(name).cloned().unwrap_or_default()
 }

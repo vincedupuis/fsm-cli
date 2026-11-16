@@ -8,16 +8,19 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::codemodel::{CodeModel, Options, to_code_model};
+use crate::format::{is_old_format, read_machine};
 use crate::model::{FsmModel, SubmachineInfo, VertexType, machine_connection_points};
-use crate::paths::{decode_uri, display, resolve};
+use crate::paths::{display, resolve};
 use crate::render::{Renderer, TemplateError};
 use crate::validation::{Severity, validate};
-use crate::xmi::{from_xmi, model_hash};
 
 pub struct FileIssue {
     /// The file, as displayed.
     pub file: String,
-    /// xmi:id of the element ('' for the machine itself).
+    /// Line of the problem in the file (1 for the machine itself).
+    pub line: usize,
+    /// Id of the element, derived from the names (see format.rs; '' for the machine itself or a problem of the
+    /// file's text or shape).
     pub id: String,
     pub severity: Severity,
     pub message: String,
@@ -29,7 +32,7 @@ pub struct GeneratedFile {
     pub content: String,
     /// The machine's `.fsm` file, as displayed (for a file shared by several machines, the first one).
     pub source: String,
-    /// Its model hash (`model_hash` in xmi.rs).
+    /// Its model hash (`ReadMachine::hash` in format.rs).
     pub model_hash: String,
 }
 
@@ -56,8 +59,10 @@ impl GenerateError {
 
 struct Loaded {
     model: FsmModel,
-    /// `model_hash` of the file.
+    /// The model hash of the file.
     hash: String,
+    /// Line of each element, by id.
+    lines: HashMap<String, usize>,
     /// href as written in this model → path of the loaded machine.
     refs: Vec<(String, PathBuf)>,
     code: Option<Rc<CodeModel>>,
@@ -66,72 +71,116 @@ struct Loaded {
 struct Loader<'r> {
     /// Reads a `.fsm` file (None: missing or unreadable).
     read: &'r dyn Fn(&Path) -> Option<String>,
-    loaded: HashMap<PathBuf, Loaded>,
+    /// The machines read, by path (None: the file's text or shape has problems).
+    loaded: HashMap<PathBuf, Option<Loaded>>,
     issues: Vec<FileIssue>,
     building: HashSet<PathBuf>,
+    /// An old-format file was refused, which stops everything: its error isn't one submachine's problem.
+    refused_old: bool,
 }
 
 impl Loader<'_> {
-    fn check_id(path: &Path, model: &FsmModel, expected: Option<&str>) -> Result<(), GenerateError> {
-        match expected {
-            Some(id) if !id.is_empty() && model.id != id => {
-                Err(GenerateError::new(format!("{} has no state machine with id '{id}'.", display(path))))
-            }
-            _ => Ok(()),
-        }
-    }
-
-    fn load(&mut self, path: &Path, expected_id: Option<&str>) -> Result<(), GenerateError> {
+    /// Reads a machine and the machines its submachine states use, and validates it. A file that can't be read, or
+    /// that is in the old format, stops everything; problems of a file's text or shape are its issues, and the
+    /// machine is left out (Ok(false)).
+    fn load(&mut self, path: &Path) -> Result<bool, GenerateError> {
         if let Some(known) = self.loaded.get(path) {
-            return Loader::check_id(path, &known.model, expected_id);
+            return Ok(known.is_some());
         }
         let text = (self.read)(path)
             .ok_or_else(|| GenerateError::new(format!("{} does not exist or cannot be read.", display(path))))?;
-        let model = from_xmi(&text)
-            .map_err(|e| GenerateError::new(format!("{} is not a valid state machine file: {e}", display(path))))?;
-        Loader::check_id(path, &model, expected_id)?;
-        // The file reads as XML, so it hashes.
-        let hash = model_hash(&text).unwrap_or_default();
-        let hrefs: Vec<(String, String)> = model
+        if is_old_format(&text) {
+            self.refused_old = true;
+            return Err(GenerateError::new(format!(
+                "{} is in the old XMI format. Open it in FSM Editor and save it to convert it.",
+                display(path)
+            )));
+        }
+        let read = match read_machine(&text) {
+            Ok(r) => r,
+            Err(problems) => {
+                for p in problems {
+                    self.issues.push(FileIssue {
+                        file: display(path),
+                        line: p.line,
+                        id: String::new(),
+                        severity: Severity::Error,
+                        message: p.message,
+                    });
+                }
+                self.loaded.insert(path.to_path_buf(), None);
+                return Ok(false);
+            }
+        };
+        let hrefs: Vec<(String, String)> = read
+            .model
             .vertices
             .iter()
             .filter(|v| v.vtype == VertexType::State)
             .filter_map(|v| v.submachine.clone().map(|s| (v.id.clone(), s)))
             .collect();
-        self.loaded.insert(path.to_path_buf(), Loaded { model, hash, refs: Vec::new(), code: None });
+        self.loaded.insert(
+            path.to_path_buf(),
+            Some(Loaded { model: read.model, hash: read.hash, lines: read.lines, refs: Vec::new(), code: None }),
+        );
 
         // Submachines, then validation with what is known about them.
         let mut info: HashMap<String, SubmachineInfo> = HashMap::new();
         for (vertex, href) in hrefs {
-            if self.loaded[path].refs.iter().any(|(h, _)| *h == href) {
+            if info.contains_key(&href) {
                 continue;
             }
-            let mut parts = href.split('#');
-            let file = parts.next().unwrap_or("");
-            let id = parts.next().unwrap_or("");
             let dir = path.parent().unwrap_or(Path::new("/"));
-            let sub_path = resolve(dir, &decode_uri(file));
-            match self.load(&sub_path, Some(id)) {
-                Ok(()) => {
-                    let sub = &self.loaded[&sub_path].model;
-                    let found =
-                        SubmachineInfo { found: true, name: sub.name.clone(), points: machine_connection_points(sub) };
-                    self.loaded.get_mut(path).unwrap().refs.push((href.clone(), sub_path));
-                    info.insert(href, found);
-                }
-                Err(GenerateError::Failed { message, .. }) => {
+            let sub_path = resolve(dir, &href);
+            let found = match self.load(&sub_path) {
+                Ok(true) => true,
+                Ok(false) => {
                     // Reported by the validator as a missing machine; say why.
-                    self.issues.push(FileIssue { file: display(path), id: vertex, severity: Severity::Error, message });
-                    info.insert(href, SubmachineInfo::default());
+                    let message = format!("{} is not a valid state machine file.", display(&sub_path));
+                    self.issue(path, &vertex, message);
+                    false
+                }
+                Err(GenerateError::Failed { message, issues }) if issues.is_empty() && !self.refused_old => {
+                    self.issue(path, &vertex, message);
+                    false
                 }
                 Err(e) => return Err(e),
+            };
+            if found {
+                let sub = &self.loaded[&sub_path].as_ref().unwrap().model;
+                let found =
+                    SubmachineInfo { found: true, name: sub.name.clone(), points: machine_connection_points(sub) };
+                self.loaded.get_mut(path).unwrap().as_mut().unwrap().refs.push((href.clone(), sub_path));
+                info.insert(href, found);
+            } else {
+                info.insert(href, SubmachineInfo::default());
             }
         }
-        let issues = validate(&self.loaded[path].model, &info);
+        let l = self.loaded[path].as_ref().unwrap();
+        let issues = validate(&l.model, &info);
         for i in issues {
-            self.issues.push(FileIssue { file: display(path), id: i.id, severity: i.severity, message: i.message });
+            let line = l.lines.get(&i.id).copied().unwrap_or(1);
+            self.issues.push(FileIssue {
+                file: display(path),
+                line,
+                id: i.id,
+                severity: i.severity,
+                message: i.message,
+            });
         }
-        Ok(())
+        Ok(true)
+    }
+
+    /// An error about the element `id` of the machine in `path`.
+    fn issue(&mut self, path: &Path, id: &str, message: String) {
+        let line = self.loaded[path].as_ref().and_then(|l| l.lines.get(id).copied()).unwrap_or(1);
+        self.issues.push(FileIssue {
+            file: display(path),
+            line,
+            id: id.to_string(),
+            severity: Severity::Error,
+            message,
+        });
     }
 
     /// Stops the generation on the errors in the machines.
@@ -147,7 +196,7 @@ impl Loader<'_> {
 
     /// The code model of a loaded machine, its submachines' first.
     fn code_of(&mut self, path: &Path) -> Result<Rc<CodeModel>, GenerateError> {
-        let l = &self.loaded[path];
+        let l = self.loaded[path].as_ref().unwrap();
         if let Some(code) = &l.code {
             return Ok(code.clone());
         }
@@ -162,35 +211,59 @@ impl Loader<'_> {
         for (href, sub) in refs {
             submachines.insert(href, self.code_of(&sub)?);
         }
-        let options = Options { submachines, source_file: display(path), model_hash: self.loaded[path].hash.clone() };
-        let code = match to_code_model(&self.loaded[path].model, &options) {
-            Ok(code) => Rc::new(code),
+        let l = self.loaded[path].as_ref().unwrap();
+        let options = Options { submachines, source_file: display(path), model_hash: l.hash.clone() };
+        let code = match to_code_model(&without_generated_names(&l.model), &options) {
+            Ok(mut code) => {
+                code.point_ids = machine_points(&l.model);
+                Rc::new(code)
+            }
             Err(e) => {
                 // Reported at the element it is about, as a validation error would be.
-                self.issues.push(FileIssue {
-                    file: display(path),
-                    id: e.id,
-                    severity: Severity::Error,
-                    message: e.message,
-                });
+                self.issue(path, &e.id, e.message);
                 return Err(self.failed());
             }
         };
-        self.loaded.get_mut(path).unwrap().code = Some(code.clone());
+        self.loaded.get_mut(path).unwrap().as_mut().unwrap().code = Some(code.clone());
         self.building.remove(path);
         Ok(code)
     }
 }
 
-/// Line of the element with xmi:id `id` in a file's `text` (1 for the machine itself, or when it isn't found).
-pub fn line_of(text: &str, id: &str) -> usize {
-    if id.is_empty() {
-        return 1;
+/// The model as the code model sees it: generated names (ending with `*`, which the diagram doesn't show) are no
+/// names, so that the code names such elements as it names unnamed ones (`Final`, `choice`, `entry`).
+fn without_generated_names(model: &FsmModel) -> FsmModel {
+    let mut m = model.clone();
+    for v in &mut m.vertices {
+        if v.name.ends_with('*') {
+            v.name.clear();
+        }
+        for r in &mut v.regions {
+            if r.name.ends_with('*') {
+                r.name.clear();
+            }
+        }
     }
-    match text.find(&format!("xmi:id=\"{id}\"")) {
-        Some(i) => text[..i].matches('\n').count() + 1,
-        None => 1,
+    for r in &mut m.regions {
+        if r.name.ends_with('*') {
+            r.name.clear();
+        }
     }
+    m
+}
+
+/// The ids of a machine's own points by their names in the file (the first of a name used twice), which connection
+/// point references name: not rebuilt from the names, as an id already taken (a point named `initial`, beside the
+/// machine's initial pseudostate) gets `~2`.
+fn machine_points(model: &FsmModel) -> HashMap<String, String> {
+    let top: HashSet<&str> = model.regions.iter().map(|r| r.id.as_str()).collect();
+    let mut out = HashMap::new();
+    for v in &model.vertices {
+        if matches!(v.vtype, VertexType::EntryPoint | VertexType::ExitPoint) && top.contains(v.parent.as_str()) {
+            out.entry(v.name.clone()).or_insert_with(|| v.id.clone());
+        }
+    }
+    out
 }
 
 fn plural(n: usize) -> &'static str {
@@ -203,9 +276,10 @@ pub fn generate(
     renderer: &Renderer,
     read: &dyn Fn(&Path) -> Option<String>,
 ) -> Result<GenerateResult, GenerateError> {
-    let mut loader = Loader { read, loaded: HashMap::new(), issues: Vec::new(), building: HashSet::new() };
+    let mut loader =
+        Loader { read, loaded: HashMap::new(), issues: Vec::new(), building: HashSet::new(), refused_old: false };
     for s in sources {
-        loader.load(s, None)?;
+        loader.load(s)?;
     }
     if loader.issues.iter().any(|i| i.severity == Severity::Error) {
         return Err(loader.failed());
@@ -222,7 +296,14 @@ pub fn generate(
         let (rendered, reported) = renderer.render(&code).map_err(GenerateError::Template)?;
         // What the template reports about this machine, as issues of its file.
         for r in reported {
-            loader.issues.push(FileIssue { file: display(path), id: r.id, severity: r.severity, message: r.message });
+            let line = loader.loaded[path].as_ref().and_then(|l| l.lines.get(&r.id).copied()).unwrap_or(1);
+            loader.issues.push(FileIssue {
+                file: display(path),
+                line,
+                id: r.id,
+                severity: r.severity,
+                message: r.message,
+            });
         }
         for f in rendered {
             if let Some(other) = owner.get(&f.path) {
@@ -242,7 +323,7 @@ pub fn generate(
                 path: f.path,
                 content: f.content,
                 source: display(path),
-                model_hash: loader.loaded[path].hash.clone(),
+                model_hash: loader.loaded[path].as_ref().unwrap().hash.clone(),
             });
         }
     }
@@ -252,4 +333,19 @@ pub fn generate(
         return Err(GenerateError::Failed { message, issues: loader.issues });
     }
     Ok(GenerateResult { files, issues: loader.issues })
+}
+
+/// Reads and validates `sources` (absolute paths) and the machines they use, without generating anything: the
+/// problems `fsm write` would report, or why it would stop before validating (a missing file, an old one).
+pub fn check(sources: &[PathBuf], read: &dyn Fn(&Path) -> Option<String>) -> Result<Vec<FileIssue>, String> {
+    let mut loader =
+        Loader { read, loaded: HashMap::new(), issues: Vec::new(), building: HashSet::new(), refused_old: false };
+    for s in sources {
+        match loader.load(s) {
+            Ok(_) => {}
+            Err(GenerateError::Failed { message, .. }) => return Err(message),
+            Err(GenerateError::Template(_)) => unreachable!("loading renders no template"),
+        }
+    }
+    Ok(loader.issues)
 }

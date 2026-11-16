@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "name": "SchemaInside",
+  "type": "behavioral",
+  "initial": {
+    "target": "A"
+  },
+  "elements": [
+    {
+      "name": "A",
+      "type": "state",
+      "$schema": "x"
+    }
+  ]
+}

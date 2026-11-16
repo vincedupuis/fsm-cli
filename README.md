@@ -1,11 +1,12 @@
 # fsm-cli
 
-`fsm`, the command-line tool of [FSM Editor](https://github.com/vincedupuis/fsm-editor-vscode), for its state machines (`.fsm` files: UML 2.5.1 in XMI 2.5.1). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language. `fsm diff` compares two versions of a machine, model and layout, and `fsm merge` merges two versions made from a common one, as a Git merge driver can.
+`fsm`, the command-line tool of [FSM Editor](https://github.com/vincedupuis/fsm-editor-vscode), for its UML 2.5.1 state machines (`.fsm` files, JSON: see [The .fsm file format](#the-fsm-file-format)). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language.
 
-It is FSM Editor's code generator: the editions for Visual Studio and JetBrains IDEs run the `fsm` executable, and the one for VS Code runs the same code built as WebAssembly, on the desktop and on the web. It validates the machines with the editors' rules and messages, and builds the code model, the language-neutral description of a machine that templates print.
+It is FSM Editor's code generator: the editions for Visual Studio and JetBrains IDEs run the `fsm` executable, and the one for VS Code runs the same code built as WebAssembly, on the desktop and on the web. It validates the machines with the editors' rules and messages, and builds the code model, the language-neutral description of a machine that templates print. It is also the reference for the file format: its description below, its JSON Schemas (`schemas/`) and its test cases (`tests/cases`, the files with the problems `fsm` reports for them), which the editors check themselves against.
 
 - [Building](#building)
 - [Usage](#usage)
+- [The .fsm file format](#the-fsm-file-format)
 - [Bundled templates](#bundled-templates)
 - [Writing a template](#writing-a-template)
 - [WebAssembly](#webassembly)
@@ -20,7 +21,7 @@ cargo test
 
 The program is a single executable without dependencies. Templates are files, not built into it: ship it with the `templates/` folder next to it, where `-t <name>` finds them.
 
-Prebuilt executables for Linux and macOS (x64, arm64) and Windows (x64), each with its `templates/` folder, are on the [Releases](https://github.com/vincedupuis/fsm-cli/releases) page (`fsm-<version>-<platform>.tar.gz`, `.zip` on Windows), with the WebAssembly module (`fsm-<version>.wasm`) and the templates alone (`fsm-templates-<version>.tar.gz`).
+Prebuilt executables for Linux and macOS (x64, arm64) and Windows (x64), each with its `templates/` folder, are on the [Releases](https://github.com/vincedupuis/fsm-cli/releases) page (`fsm-<version>-<platform>.tar.gz`, `.zip` on Windows), with the WebAssembly module (`fsm-<version>.wasm`), the templates alone (`fsm-templates-<version>.tar.gz`), the JSON Schemas (`fsm-schemas-<version>.tar.gz`) and the test cases of the format (`fsm-cases-<version>.tar.gz`).
 
 ## Usage
 
@@ -50,270 +51,308 @@ fsm write <files...> --template <template> [--out <folder>] [--check]
 fsm write "models/**/*.fsm" -t sml -o src/generated
 ```
 
-- The machines are validated first. Nothing is generated when they have errors, and warnings are reported.
+- The machines are read and validated first. Nothing is generated when a file isn't valid JSON, has the wrong shape or has validation errors: every problem is reported with its file and line. Warnings are reported too.
+- Files in the old format (XMI, FSM Editor 0.6 and earlier) are refused: `fsm: Order.fsm is in the old XMI format. Open it in FSM Editor and save it to convert it.` The same when a machine uses a submachine file still in the old format; the message names that file.
+- The layout files (`.fsm.layout`) are never read: the drawing changes nothing in the generated code.
 - Machines used by submachine states are read and validated too, but only the given files are generated. Generate the submachines' files as well, e.g. with `"models/*.fsm"`.
 - Quote glob patterns (`*`, `?`, `[...]`, `**`): the program expands them itself, the same in bash, zsh, PowerShell and cmd.
 - Problems, including the errors found while building the code model (such as pseudostates forming a cycle) and the warnings and errors a template reports, are printed to stderr as `file:line: severity: message`, which editors' problem matchers and CI logs understand.
 - Exit codes: `0` success, `1` errors in the machines or the template (with `--check`, also files missing or out of date), `2` bad usage.
 - Generated files are always overwritten.
 - Handlebars templates (`.hbs`) are refused: see [Coming from the Handlebars templates](#coming-from-the-handlebars-templates).
-- `--check` writes nothing: it renders the template in memory and checks the output folder instead, for instance as a CI step that fails when someone changed a model without regenerating its code. Every file the template generates for a machine and writes the machine's `machine.modelHash` in is reported as up to date (stdout) when the file in the folder holds that hash, and as an error (stderr, `file:line: error: …`) when it is missing or holds another hash. Files without the hash, such as the `FsmTimers.h` that the `sml` template shares between machines, aren't checked, and only the hash is compared: a file generated by another version of the template counts as up to date. A machine's files carry its own model hash only, while a change to a submachine can also change the files of the machines that use it (their events include the submachine's): check the submachines' files too, e.g. with `"models/*.fsm"`, and regenerate them all.
+- `--check` writes nothing: it renders the template in memory and checks the output folder instead, for instance as a CI step that fails when someone changed a model without regenerating its code. The model hash is computed from the model's content (the JSON value, without `$schema`), not from the file's text: reformatting a file changes nothing. Every file the template generates for a machine and writes the machine's `machine.modelHash` in is reported as up to date (stdout) when the file in the folder holds that hash, and as an error (stderr, `file:line: error: …`) when it is missing or holds another hash. Files without the hash, such as the `FsmTimers.h` that the `sml` template shares between machines, aren't checked, and only the hash is compared: a file generated by another version of the template counts as up to date. A machine's files carry its own model hash only, while a change to a submachine can also change the files of the machines that use it (their events include the submachine's): check the submachines' files too, e.g. with `"models/*.fsm"`, and regenerate them all.
 
-### fsm diff
+## The .fsm file format
 
-```sh
-fsm diff <old.fsm> <new.fsm> [--json]
-```
+A state machine is two files side by side: `<Name>.fsm`, the model, and `<Name>.fsm.layout`, its drawing. Both are JSON (UTF-8 without a byte order mark, LF line ends, CRLF accepted when reading, 2-space indentation, a newline at the end). The model file is meant to be read and edited by hand; it holds no ids, as elements are identified by their names, and nothing about the drawing. Nobody is expected to read the layout file, which is built for small diffs and rare merge conflicts. `fsm` reads the model files only.
 
-| Option | |
+The JSON Schemas of the two files are [`schemas/fsm.schema.json`](schemas/fsm.schema.json) and [`schemas/fsm-layout.schema.json`](schemas/fsm-layout.schema.json) (draft-07): an editor that knows them checks and completes the files as you type. A file may name its schema in a top-level `$schema` field, which readers ignore and FSM Editor doesn't write back. The schemas can't see one problem: a field given twice in one object, which `fsm` reports too.
+
+### The model file
+
+Fields are listed in the order FSM Editor writes them. `format`, `name` and `type` are always written; the other fields only when they have content (an empty text or list is never written, with one exception below).
+
+**The machine** (the top-level object):
+
+| Field | |
 | --- | --- |
-| `--json` | Print the differences as one JSON document (see below) instead of text. |
-| `-h, --help` | |
+| `format` | The number `1`. Required, first. |
+| `name` | The machine's name. Required. |
+| `type` | `"behavioral"` or `"protocol"`. Required. |
+| `documentation` | Text. |
+| `points` | The machine's own entry and exit points, which the states using it as a submachine connect to (list of points). |
+| the region fields, or `regions` | Its content (below). |
 
-Compares two versions of a state machine, for instance a file and its last committed version, and prints what changed. It reads the two files and writes nothing. It doesn't validate them: a machine with errors can still be compared, as long as it can be read.
+**Region fields**, used by the machine, by a state with one region, and by each item of `regions`:
 
-- **Elements** are the machine, its vertices (states, pseudostates, final states, connection point references, comments) and its transitions. An internal transition, drawn as a line of its state, is an element of its own.
-- **Matching:** elements are matched by `xmi:id`. An element deleted and drawn again has a new id: it shows as removed, plus added. The machine is matched by id too: two files whose machines have different ids have nothing in common but the ids their elements may share.
-- **Changed (`~`):** a model property differs.
-  - Machine: name, kind, context, documentation, top-level regions.
-  - Vertex: type, name, owner, regions (ids and names), entry, exit, do activity, deferred events, invariant, submachine, stereotype, referenced point (connection point references), comment text and anchors.
-  - Transition: source, target, kind, triggers, guard, effect, precondition, postcondition.
-- **Layout only (`·`):** only drawing properties differ: position and size, region layout and sizes, bend points, label offset, colors, group. Positions are compared relative to the state that owns the vertex, and bend points relative to the transition's source: dragging a composite state with its content marks that state, not everything inside it. Bend points count as changed only when they moved both relative to the source and on the canvas: dragging a state alone leaves the bend points of its transitions to and from other vertices where they are, so it marks that state, not those transitions. Numbers are compared at 0.1 px, as files store them, so smaller differences don't count. The region layout and sizes of a state whose regions were added or removed aren't compared: the change of regions says it.
-- **Changed wins over layout:** an element with both is changed, and its first line says `(also moved)`.
-- **A missing or empty file** is a file without a machine: everything in the other file is added or removed (`/dev/null` is an empty file). Both files missing is an error.
-- **Exit codes:** `0` the files were compared (with or without differences), `1` a file can't be read or isn't a state machine (`fsm: X is not a valid state machine file: …`), `2` bad usage.
-
-#### Text output
-
-The new file's name (the old one's when the new one is missing or empty), then a line per model change, per element added and per element removed, then one line counting the elements changed in the layout only:
-
-```
-MediaPlayer.edited.fsm
-  ~ state Stopped renamed to Idle
-  ~ transition Playing → Paused on pause: guard added [canPause()]
-  + state Buffering
-  + transition Playing → Buffering on stall
-  - state Fault
-  - transition fault → Fault
-  - transition Fault → Deep history on reset
-  · 4 shapes moved (layout only)
-```
-
-Identical files give the name and `  no differences`. The lines come in this order: changed, added, removed, each with the machine first, then the vertices, then the transitions, in file order (the old file's for removed elements). An element with several model changes has one line per change.
-
-#### Labels
-
-An element's label names it as people find it on the diagram: as it was in the old file, or in the new one for an added element. Text lines start the label with a lowercase letter (`~ state Stopped`); the JSON `label` starts with a capital (`State Stopped`).
-
-| Element | Label |
+| Field | |
 | --- | --- |
-| Machine | `Machine MediaPlayer` (`Machine` when it has no name) |
-| Named vertex | its kind and name: `State Playing`, `Entry point start`, `Choice check` |
-| Unnamed vertex | its kind, the source of its first incoming transition, the target of its first outgoing one, and the state it is in, each when there is one: `Initial to Off`, `Choice from Stopped to Idle in On`, `Final state from Off` |
-| Connection point reference | `Entry point reference start on Checkout` (the referenced point's id, the state) |
-| Comment | `Comment "Deep history restores the last…"` (its text, cut after 30 characters; `Comment in <state>` when empty) |
-| Transition | `Transition Playing → Paused on pause` (`on <triggers>` when it has some, joined with `, `) |
-| Internal transition | `Internal transition in Paused on volumeChanged` |
+| `initial` | The initial pseudostate and its transition: `{ "target": <reference>, "action": <text> }`, `action` optional. |
+| `history` | A shallow history pseudostate, with its default transition: `{ "target": <reference>, "action": <text> }`, both optional. |
+| `deepHistory` | A deep history pseudostate, the same way. |
+| `elements` | The region's elements (list). A composite state whose only region is empty writes `"elements": []`, so that it stays composite. |
 
-Vertex kinds: `State`, `Final state`, `Initial`, `Shallow history`, `Deep history`, `Choice`, `Junction`, `Fork`, `Join`, `Entry point`, `Exit point`, `Terminate`, `Connection point reference`, `Comment`. In a transition's label, an unnamed end is shown by its kind (`Transition Initial → Off`), a connection point reference by the point's id, and an end that doesn't exist by its id.
+**`regions`**: a list of two regions or more (orthogonal regions), each `{ "name": <text>, …region fields }`, `name` required. A state or machine with one region writes its region fields directly, and that region has no name. `regions` and the region fields can't be used together.
 
-#### Sentences
+**Elements** (items of `elements`): `name` and `type` (required), then by type:
 
-A model change is `~ <label>: <sentence>`, or `~ <label> <sentence>` for the name:
-
-| Property | Sentences |
+| `type` | Fields |
 | --- | --- |
-| name | `renamed to Idle`, `named Idle`, `name Idle removed` |
-| entry, exit, do, effect, submachine, context | `entry added a()`, `entry removed a()`, `entry changed from a() to a(); b()` (`do activity` for do) |
-| guard, invariant, precondition, postcondition | the same, the value in brackets: `guard added [canPause()]` |
-| stereotype | the same, the value in guillemets: `stereotype changed from «device» to «sensor»` |
-| text (comment), documentation | the same, the value quoted and cut after 40 characters: `text changed from "Starts off" to "Starts dark"` |
-| triggers, deferred, anchors | `trigger stop added`, `triggers stop, eject removed`, `triggers changed from pause to stop` (`deferred event`, `anchor`; anchors are named like transition ends, or `transition A → B`) |
-| type | `type changed from choice to junction` (the kinds above, in lowercase) |
-| kind | `kind changed from external to local`, `kind changed from behavioral to protocol` |
-| source, target | `source changed from Paused to Stopped`; with the ids when both are named alike: `target changed from Paused (v_paused) to Paused (v_paused2)` |
-| owner | `owner changed from On to the machine`; a region is named after its state, or `region audio of Playing` (`region 2 of Playing` when unnamed) when the state has several |
-| regions | `region audio added`, `an unnamed region added`, `region audio removed`, `region audio renamed to sound`, `regions reordered`, joined with `, ` |
-| point | `point changed from entry point start to exit point done` |
+| `"state"` | `stereotype`, `submachine`, `entry`, `do`, `exit`, `defer`, `invariant`, `transitions`, `points`, then the region fields or `regions`. |
+| `"choice"`, `"junction"`, `"fork"`, `"join"` | `transitions` |
+| `"final"`, `"terminate"` | none |
+| `"comment"` | `text`, `anchors` |
 
-Values are shown on one line: line breaks become spaces.
+**Points** (items of `points`): `name` and `type` (`"entryPoint"` or `"exitPoint"`), both required, and `transitions`. On a state: its entry and exit points. On a submachine state: the points of the submachine it uses (connection point references), by the names they have in the other file. On the machine: its own connection points.
 
-#### JSON output
+**Transitions** (items of `transitions`, inside their source, in priority order): `type` (`"external"`, `"internal"` or `"local"`, required), `trigger`, `guard`, `action`, `precondition`, `postcondition`, `target`. `target` is required, except for an internal transition, which has none.
 
-`--json` prints one JSON document on stdout, with the keys in this order:
+**Texts:**
 
-- `elements`: the elements that differ, in the order of the text output, then those changed in the layout only. Each has:
-  - `id`: its `xmi:id` (the new file's; the old one's for a removed element);
-  - `element`: `machine`, `vertex` or `transition`;
-  - `status`: `added`, `removed`, `changed` or `layout`;
-  - `label`: as above;
-  - `moved`: whether a drawing property differs;
-  - `changes`: the properties that differ, model properties first, then drawing ones, each as `{ "property", "before", "after" }` (empty for added and removed elements).
-- `counts`: the number of elements per status: `added`, `removed`, `changed`, `layout`.
+- `trigger`: the triggers as the diagram shows them, separated by `, ` (`"play, resume"`, `"after(5m)"`): event names, or `after(<number><ms|s|m|h>)`. One object per arrow. `defer`, the deferred events, is written the same way.
+- `entry`, `exit`, `do`, `action`: argument-less calls separated by `; ` (`"start(); log()"`).
+- `guard`, `invariant`, `precondition`, `postcondition`: calls combined with `!`, `&&`, `||` and parentheses; `else` on the branches of a choice or junction.
+- `submachine`: the path of the other `.fsm` file, relative to this one (one machine per file).
+- `stereotype`: a name. `documentation` and a comment's `text`: free text.
+
+A comment's **`anchors`** are what it is attached to: a list of references (texts), or, for a transition, `{ "source": <reference>, "trigger": <text>, "target": <reference> }` (`trigger` and `target` left out when the transition has none). A comment without `anchors` is valid, and so is an anchor that matches nothing: the comment is drawn, without that anchor's dashed line.
+
+### Names and references
+
+- Every element, region of `regions` and point has a name, never empty.
+- Names are unique in the file among the machine, every region and every element of every type. Point names are unique on their owner, and a point can't be named `history` or `deepHistory`.
+- A name never contains spaces (ids and trace lines are space-separated words) or `.`, and contains `*` only as its last character. **A name ending with `*` is a generated name**, which the diagram doesn't show: FSM Editor gives such names to the elements it creates, except states (`choice1*`, `final1*`, `comment1*`, `region1*`, `entry1*`, …), and generated code names them as it names unnamed elements.
+- A **reference** (`target`, a comment's anchors) is the name of an element; `<owner>.<point>`, a point of a state or of the machine (the owner being the machine's name); or `<owner>.history` / `<owner>.deepHistory`, the owner being the state, the region when the state has several, or the machine's name at the top level. There are no paths: `A.B.C` is never a reference.
+- Transitions, `initial`, `history` and `deepHistory` have no name. Where a transition must be found again (in the layout file, in a comment's anchor), it is found under its source by its `trigger` and `target`, then by order among identical ones.
+
+### Formatting
+
+- An object is written on one line (`{ "type": "external", "target": "Off" }`) when it holds no list and no object, else one field per line; the top-level object always one field per line. A list is written one item per line.
+- Texts use JSON's minimal escapes (`\"`, `\\`, `\n`, `\t`, `\u00XX` for other control characters); other characters are written as they are.
+- Writing is deterministic: reading a file FSM Editor wrote and writing it again gives the same bytes.
+
+<details>
+<summary>An example: <code>MediaPlayer.fsm</code> (FSM Editor's example)</summary>
 
 ```json
 {
+  "format": 1,
+  "name": "MediaPlayer",
+  "type": "behavioral",
+  "documentation": "Example UML state machine: composite and orthogonal states, deep history, choice, exit point and an internal transition.",
+  "initial": { "target": "Off" },
   "elements": [
     {
-      "id": "v_stopped",
-      "element": "vertex",
-      "status": "changed",
-      "label": "State Stopped",
-      "moved": false,
-      "changes": [
-        { "property": "name", "before": "Stopped", "after": "Idle" }
+      "name": "comment1*",
+      "type": "comment",
+      "text": "Deep history restores the\nlast active playback substates\nafter a fault is reset.",
+      "anchors": [
+        "On.deepHistory"
       ]
     },
     {
-      "id": "v_on",
-      "element": "vertex",
-      "status": "layout",
-      "label": "State On",
-      "moved": true,
-      "changes": [
-        { "property": "position", "before": { "x": 340, "y": 20 }, "after": { "x": 370, "y": 40 } }
+      "name": "Off",
+      "type": "state",
+      "entry": "powerDown()",
+      "transitions": [
+        { "type": "external", "trigger": "powerOn", "target": "On" },
+        { "type": "external", "trigger": "unplug", "target": "final1*" }
+      ]
+    },
+    { "name": "final1*", "type": "final" },
+    {
+      "name": "On",
+      "type": "state",
+      "entry": "ampOn()",
+      "exit": "ampOff()",
+      "transitions": [
+        { "type": "external", "trigger": "powerOff", "target": "Off" }
+      ],
+      "points": [
+        {
+          "name": "fault",
+          "type": "exitPoint",
+          "transitions": [
+            { "type": "external", "target": "Fault" }
+          ]
+        }
+      ],
+      "initial": { "target": "Stopped" },
+      "deepHistory": { "target": "Stopped" },
+      "elements": [
+        {
+          "name": "Stopped",
+          "type": "state",
+          "entry": "rewind()",
+          "transitions": [
+            { "type": "external", "trigger": "play", "target": "Playing" },
+            { "type": "external", "trigger": "eject", "target": "choice1*" }
+          ]
+        },
+        {
+          "name": "Paused",
+          "type": "state",
+          "do": "blinkLed()",
+          "transitions": [
+            { "type": "external", "trigger": "play", "target": "Playing" },
+            { "type": "external", "trigger": "stop", "target": "Stopped" },
+            { "type": "internal", "trigger": "volumeChanged", "action": "updateVolume()" },
+            { "type": "external", "trigger": "after(5m)", "action": "saveBookmark()", "target": "Stopped" }
+          ]
+        },
+        {
+          "name": "choice1*",
+          "type": "choice",
+          "transitions": [
+            { "type": "external", "guard": "else", "action": "openTray()", "target": "Stopped" },
+            { "type": "external", "guard": "isTrayJammed()", "target": "On.fault" }
+          ]
+        },
+        {
+          "name": "Playing",
+          "type": "state",
+          "transitions": [
+            { "type": "external", "trigger": "pause", "target": "Paused" }
+          ],
+          "regions": [
+            {
+              "name": "audio",
+              "initial": { "target": "Stereo" },
+              "elements": [
+                {
+                  "name": "Stereo",
+                  "type": "state",
+                  "transitions": [
+                    { "type": "external", "trigger": "toggleAudio", "target": "Mono" }
+                  ]
+                },
+                {
+                  "name": "Mono",
+                  "type": "state",
+                  "transitions": [
+                    { "type": "external", "trigger": "toggleAudio", "target": "Stereo" }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "video",
+              "initial": { "target": "HD" },
+              "elements": [
+                {
+                  "name": "HD",
+                  "type": "state",
+                  "transitions": [
+                    { "type": "external", "trigger": "lowBandwidth", "target": "SD" }
+                  ]
+                },
+                {
+                  "name": "SD",
+                  "type": "state",
+                  "transitions": [
+                    { "type": "external", "trigger": "highBandwidth", "target": "HD" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Fault",
+      "type": "state",
+      "entry": "showError()",
+      "transitions": [
+        { "type": "external", "trigger": "reset", "target": "On.deepHistory" }
       ]
     }
-  ],
-  "counts": { "added": 0, "removed": 0, "changed": 1, "layout": 1 }
+  ]
 }
 ```
 
-(The program prints one key per line.) Property names and values:
-
-| Property | Value |
-| --- | --- |
-| `name`, `entry`, `exit`, `do`, `invariant`, `submachine` (href), `stereotype`, `text`, `guard`, `effect`, `precondition`, `postcondition`, `context`, `documentation` | a string, `""` when absent |
-| `type` | the vertex type: `state`, `final`, `initial`, `shallowHistory`, `deepHistory`, `choice`, `junction`, `fork`, `join`, `entryPoint`, `exitPoint`, `terminate`, `connectionPointRef`, `comment` |
-| `kind` | `external`, `internal`, `local` (transition); `behavioral`, `protocol` (machine) |
-| `owner`, `source`, `target` | an id: the region holding the vertex (the state, for a point on its border), the transition's ends |
-| `regions` | `[{ "id", "name" }]` |
-| `triggers`, `deferred`, `anchors` | a list of strings (anchors are ids) |
-| `point` | `{ "kind": "entry" \| "exit", "ref": "<id of the point in the submachine's file>" }`, `null` for other vertices |
-| `position` | `{ "x", "y" }`, relative to the owning state (absolute at the top level) |
-| `size` | `{ "width", "height" }` |
-| `regionLayout` | `horizontal` or `vertical` (states with several regions) |
-| `regionSizes` | each region's size along the layout, `null` when it has no shape (states with regions) |
-| `points` | the bend points, `[{ "x", "y" }]`, relative to the source (listed only when they also moved on the canvas) |
-| `labelOffset` | `{ "x", "y" }` from the middle of the line, `null` for the default place |
-| `color` | `#rrggbb`, `""` when none |
-| `itemColors` | `{ "<item>": "#rrggbb" }` for the items that have their own color (`background`, `entry`, `exit`, `doActivity`, `deferrable`, `invariant`, `triggers`, `guard`, `effect`, `precondition`, `postcondition`) |
-| `group` | the group's id, `""` when none |
-
-Numbers are rounded to 0.1 and written without a fraction when whole.
-
-### fsm merge
-
-```sh
-fsm merge <base.fsm> <ours.fsm> <theirs.fsm> -o <merged.fsm> [--name <path>] [--json]
-```
-
-| Option | |
-| --- | --- |
-| `-o, --out <file>` | Where to write the merged machine. It may be `ours.fsm` or `theirs.fsm`: every input is read before it is written. |
-| `--name <path>` | The name the report's header shows instead of the output file, such as the machine's path where the output is a temporary file (Git's `%P`). Nothing else changes; the JSON has no header. |
-| `--json` | Print the report as one JSON document on stdout (see below) instead of text on stderr. |
-| `-h, --help` | |
-
-Merges two versions of a state machine, `ours` and `theirs`, made from a common one, the `base`: a three-way merge by `xmi:id`, property by property, with the elements and properties of [`fsm diff`](#fsm-diff). The merged file is always a valid `.fsm` file, without conflict markers, written exactly as the editors write it: opening it and saving it in an editor doesn't change it (when its ids are unique: an id used twice, a validation error the inputs already have, lets the editors move the elements sharing it on the next save).
-
-**Merged without a question:**
-
-- A property changed on one side only, or the same way on both, is taken.
-- Triggers, deferred events and comment anchors changed on both sides become the union: ours' list without what theirs removed, then what theirs added. A state's regions are merged the same way, by id, and their names property by property.
-- Elements added on both sides are all kept, in this order in each region: the base's elements, then ours' additions, then theirs' (generated code enters and exits regions in that order, and tries transitions in that order).
-- A deleted element takes its contents (the vertices in its regions, the points on its border), its transitions and the comments' anchors to it with it, as deleting it in the editor does.
-- The events list, the diagram ids and the region shapes are written again from the merged machine, as the editors do, never merged as text.
-
-**Layout never conflicts.** The drawing properties (position, size, region layout and sizes, bend points, label offset, colors, group) take ours' value when both sides changed them, and the report says so. Positions are merged relative to the state that owns the vertex and bend points relative to the transition's source, then placed in the merged machine: a state moved on one side inside a composite state moved on the other ends up where it was moved, inside the moved composite. As in `fsm diff`, a side changed a transition's bend points only when they moved both relative to the source and on the canvas: when only one side moved them on the canvas, they are taken as that side has them, so a side that only dragged a state doesn't stop the other side's new bend points from landing where it put them. A vertex moved to another region takes its position from the side that moved it. Numbers are compared at 0.1 px, as files store them.
-
-**Conflicts** keep ours and are reported:
-
-- a model property set to two different values (ours' value is kept); a vertex whose type one side changed while the other changed it too keeps ours' version;
-- an element deleted on one side and changed on the other, or given new contents, new transitions or transitions moved to it: kept deleted when ours deleted it, the other side's changes and additions left out; kept with its contents and transitions, as ours has them, when theirs deleted it. A region removed from a state counts as deleted the same way;
-- two states moved into each other: the owners of ours are kept.
-
-**Validation.** The merged machine is validated as `fsm write` validates machines, and the issues that neither `ours` nor `theirs` has (same element, same message) are reported as caused by the merge: for example a state given an unguarded completion transition on each side (a warning), or an initial pseudostate given a transition on each side (an error). An error caused by the merge makes `fsm merge` fail like a conflict (exit code `1`): the merged machine would no longer generate code. The file is written all the same, valid and without markers. Warnings don't change the exit code.
-
-**Files.** An empty (white space or a byte order mark only) or missing `base` is a file without a machine: the two sides then added everything, and what they hold alike is kept as it is. `ours` and `theirs` must be state machines with the same machine id. Files that can't be merged at all (unreadable, not a state machine, two different machines) are an error, and nothing is written.
-
-**Exit codes:** `0` merged without a conflict or a validation error caused by the merge, `1` conflicts remain (the file is written, with ours' choices), the merge caused validation errors (the file is written) or the files can't be merged (nothing written), `2` bad usage.
-
-#### Report
-
-On stderr: the output file and the counts (followed by `, N errors` when the merge caused validation errors, the reason for exit code `1` without a conflict), then a line per conflict (`✕`) with ours' and theirs' values or what the deletion took, a line per element whose layout both sides changed (`·`), and a line per issue the merge caused (`!`). Elements are named with [`fsm diff`'s labels](#labels), as they were in the base (as a side has them for an element it added).
-
-```
-MediaPlayer.fsm: 9 changes merged, 3 conflicts
-  ✕ transition Playing → Paused on pause: guard
-      ours    [canPause()]
-      theirs  [isPlaying() && !locked()]
-  ✕ state Paused: deleted on ours, transition Mono → Paused on mute added on theirs
-      kept deleted: theirs' changes are left out
-  ✕ state Standby: deleted on theirs, entry changed on ours
-      kept, as ours has it
-  · layout: state Stopped moved on both sides, kept ours
-  ! transition Stopped → Playing: warning: 'Stopped' has several completion transitions without triggers or guards.
-```
-
-- *Changes merged* counts the elements changed on either side (added, removed, changed, or moved: `fsm diff`'s statuses) that the merged file has as that side has them, outside conflicts.
-- A property conflict shows the property as `fsm diff` names it, then the two values as its sentences show them (`none` when empty). A containment cycle shows `owner (a containment cycle)` and the two owners.
-- A deletion conflict says which side deleted the element (or `region <name> deleted` for a region of it) and what the other side did: `<property> changed` for the element itself (`do activity`, `deferred events`), `<label> changed` for what it holds, `<label> added` for new contents and transitions.
-- The layout words are `moved`, `resized`, `regions resized`, `rerouted`, `label moved`, `recolored` and `regrouped`.
-
-#### JSON output
-
-`--json` prints one JSON document on stdout instead, with the keys in this order (key names as in `fsm diff --json`):
-
-- `merged`: the changes merged, each `{ "id", "element", "status", "label", "from" }`: `element` and `status` as in `fsm diff`, `from` is `ours`, `theirs` or `both`.
-- `conflicts`: each `{ "id", "element", "label", "conflict", "property", "base", "ours", "theirs", "deletedOn", "region", "changes", "kept" }`:
-  - `conflict`: `property`, `deleted` or `cycle`;
-  - `property`, `base`, `ours`, `theirs`: the property and its three raw values, as `fsm diff`'s `before` and `after` (`null` where a version lacks the element; all `null` for `deleted`);
-  - `deletedOn`: `ours` or `theirs` for `deleted`, else `null`; `region`: `region <name>` when it is a region of the element that was deleted, else `null`;
-  - `changes`: for `deleted`, what the other side did, as in the text (`entry changed`, `transition Mono → Paused on mute added`);
-  - `kept`: whether the element is in the merged file.
-- `layout`: the elements whose drawing properties both sides changed, each `{ "id", "element", "label", "properties" }` (`fsm diff`'s drawing property names: `position`, `size`, `regionLayout`, `regionSizes`, `points`, `labelOffset`, `color`, `itemColors`, `group`).
-- `issues`: the issues the merge caused, each `{ "id", "label", "severity", "message" }` (`id` empty for the machine).
-- `counts`: `merged`, `conflicts`, `layout`, `issues`, and `errors`, the issues of severity `error`: exit code `1` means `conflicts` or `errors` isn't 0.
+A submachine state, from `Order.fsm`, whose `Payment.fsm` declares the points `retry`, `failed` and `cancelled` in its top-level `points` (inside `Payment.fsm` they are referenced as `Payment.failed`):
 
 ```json
 {
-  "merged": [
-    { "id": "v_off", "element": "vertex", "status": "changed", "label": "State Off", "from": "theirs" }
+  "name": "Payment",
+  "type": "state",
+  "submachine": "Payment.fsm",
+  "transitions": [
+    { "type": "external", "target": "Shipped" }
   ],
-  "conflicts": [
+  "points": [
+    { "name": "retry", "type": "entryPoint" },
     {
-      "id": "t8", "element": "transition", "label": "Transition Playing → Paused on pause",
-      "conflict": "property", "property": "guard",
-      "base": "", "ours": "canPause()", "theirs": "isPlaying() && !locked()",
-      "deletedOn": null, "region": null, "changes": [], "kept": true
+      "name": "failed",
+      "type": "exitPoint",
+      "transitions": [
+        { "type": "external", "target": "PaymentFailed" }
+      ]
+    },
+    {
+      "name": "cancelled",
+      "type": "exitPoint",
+      "transitions": [
+        { "type": "external", "target": "Cart" }
+      ]
     }
-  ],
-  "layout": [],
-  "issues": [],
-  "counts": { "merged": 1, "conflicts": 1, "layout": 0, "issues": 0, "errors": 0 }
+  ]
 }
 ```
 
-(The program prints one key per line.)
+</details>
 
-#### As a Git merge driver
+A protocol machine has `"type": "protocol"`, and its transitions carry `precondition` and `postcondition`.
 
-Git can merge `.fsm` files with `fsm merge` instead of merging their text. Git calls a merge driver with the base, ours and theirs as temporary files and takes the result from the ours file, so the command line is `fsm merge %O %A %B -o %A --name %P`: `%P` is the path of the file being merged, which the report's header then shows instead of Git's temporary file (`.merge_file_…`). With exit code `0` Git completes the merge by itself; with `1` (conflicts, or validation errors the merge caused) it stops and lists the file as conflicted, and the file holds the merge with ours' choices, without conflict markers, so it opens in the editors as it is: review the report, change what needs changing, then `git add` it. Where there is no common ancestor, Git passes an empty base.
+### The layout file
 
-To set it up (not done by FSM Editor), declare the driver in a Git configuration file:
+`<Name>.fsm.layout` holds the drawing: positions and sizes, the arrangement and sizes of regions, bend points and label positions of transitions, colors, groups. It mirrors the model file, with the same nesting, names and order:
 
-```ini
-[merge "fsm"]
-    name = FSM Editor state machines
-    driver = fsm merge %O %A %B -o %A --name %P
-```
+| Object | Fields |
+| --- | --- |
+| top level | `format` (`1`, required, first), `points`, then the region fields or `regions` |
+| region fields | `initial`, `history`, `deepHistory` (each `x`, `y`, `group`, and for its arrow `bends`, `label`, `color`, `itemColors`), `elements` |
+| item of `regions` | `name`, `size` (its extent along its state's region layout), then the region fields |
+| element | `name`, `x`, `y`, `width`, `height` (states, comments, forks and joins: the others have a fixed size), `color`, `itemColors`, `group`, `regionLayout` (`"horizontal"` or `"vertical"`), `transitions`, `points`, then the region fields or `regions` |
+| point | `name`, `x`, `y`, `color`, `itemColors`, `group` (the machine's points), `transitions` |
+| transition, under its source | `trigger` and `target` (as in the model file: they identify it), `bends` (list of `{ "x", "y" }`), `label` (`{ "x", "y" }`, from the middle of the line), `color`, `itemColors`. A transition has an entry only when it has something to store. |
 
-and assign it to the files in `.gitattributes` (or `.git/info/attributes`):
+`itemColors` gives items their own colors (`#rrggbb`), keyed by the model file's field names: `background` (a composite state's regions), `entry`, `exit`, `do`, `defer`, `invariant`, `trigger`, `guard`, `action`, `precondition`, `postcondition`.
 
-```
-*.fsm merge=fsm
-```
+What keeps diffs small:
+
+- Every object is written one field per line, except an object holding only `x` and `y` (a bend point, a `label`, a bare position), which is one line: two people changing different elements don't touch adjacent lines.
+- `x` and `y` are relative to the top-left corner of the owning state (the diagram's origin at the top level); a point's position is relative to its owner. Bend points are relative to the top-left corner of the innermost state containing both ends of the transition (the state itself for a transition between a state and what it contains, or a self-transition; the origin at the top level). Moving a state changes its own `x` and `y` only; moving one end of a transition changes nothing in the transition's entry.
+- Numbers are rounded to 0.1. Saving rewrites nothing that didn't change: reading the two files and writing them again gives the same bytes.
+
+### When files are broken or disagree
+
+FSM Editor never drops or guesses anything in the model: it either refuses to draw the diagram, or draws it and keeps everything.
+
+1. **Not valid JSON**: no diagram, `fsm` generates nothing; the error is reported with its line.
+2. **Valid JSON, wrong shape**: a missing `format`, `name` or `type`, an unknown value or field (`"gaurd"`), a value of the wrong kind, a `format` greater than 1 ("needs a newer version of FSM Editor"). No diagram, nothing generated; each problem is reported with its line. Reading is strict: nothing is defaulted.
+3. **The right shape, a wrong meaning**: a reference that names nothing, a name used twice, a point the submachine doesn't have, a bad name, an `initial` without `target`. These are validation errors: FSM Editor draws the diagram (a transition whose target doesn't exist ends in a marker) and saves everything back as it was; `fsm` generates nothing.
+4. **An unreadable layout file**: FSM Editor places the elements automatically, with a warning, and doesn't overwrite the file until you confirm when saving.
+5. **The two files disagree** (a hand edit, a merge, a lost layout file): an element without a layout entry is placed automatically (default size, the first free spot beside the elements already in its region, its state growing to fit; the same on every open), and a layout entry that matches nothing is ignored and disappears at the next save. Opening never changes a file, and none of this is a validation error. Renaming an element by hand in the model file loses its position and the bend points of the transitions to it: names are its identity.
+
+### Ids
+
+The model has no ids, but `fsm` and FSM Editor derive them from the names, the same way: they name elements in problems (`id` in the [WebAssembly](#webassembly) response) and in the code model, and so in generated code's traces.
+
+| Element | Id |
+| --- | --- |
+| an element, a region of `regions` | its name |
+| a point | `<state>.<point>`, or `<machine>.<point>` for the machine's own |
+| an initial, history or deep history pseudostate | `<owner>.initial`, `<owner>.history`, `<owner>.deepHistory` (the owner as in references) |
+| the only region of a state, of the machine | `<state>.`, `<machine>.` |
+| a transition | `<source>#<n>`, n counting the source's transitions from 1: `Paused#3`, `On.fault#1`, `MediaPlayer.initial#1` |
+
+An id already taken (a name used twice, which is an error) gets `~2`, `~3`, … appended; an element without a name gets `~`.
+
+### What changed from the old format
+
+Until FSM Editor 0.6, a `.fsm` file was XMI 2.5.1 with a UML DI diagram, the model and the drawing in one XML file. FSM Editor still reads such files, and converts one when it is saved: it writes the JSON model file and creates the layout file, converting the machines linked to it by submachine references at the same time. `fsm` refuses them. What changed: names replace ids (unnamed elements get generated names, names used twice get a number, spaces in names become `_`); `effect` is now `action`; a machine has no `context` any more; a submachine is a file path (no `#id`), and its points are referenced by name; the layout lives in its own file, with relative coordinates; the model hash is computed from the model's content, not the file's text, so reformatting a file doesn't change it.
 
 ## Bundled templates
 
@@ -373,7 +412,7 @@ Besides Jinja's own (`join`, `map`, `selectattr`, `length`, `first`, `indent`, `
 | `id` | `{{ "delete" \| id }}` | Escapes reserved words: `delete_`. |
 | `pascal`, `camel`, `snake`, `upper_snake` | `{{ "blinkLed" \| upper_snake }}` | `BLINK_LED`, also escaping reserved words. |
 | `quote` | `{{ label \| quote }}` | A double-quoted string literal (C, C++, Java, TypeScript, Python). |
-| `warn()` | `{% do warn("No forks: ", name, id=id) %}` | Reports a warning about the element with xmi:id `id` (optional), at its line in the `.fsm` file. Arguments are joined. |
+| `warn()` | `{% do warn("No forks: ", name, id=id) %}` | Reports a warning about the element with the id `id` (optional, see [Ids](#ids)), at its line in the `.fsm` file. Arguments are joined. |
 | `error()` | `{% do error("Cannot generate ", name, id=id) %}` | Reports an error: every error is printed once the template has been rendered, and nothing is written. |
 
 ### Whitespace
@@ -421,7 +460,7 @@ Test the list before such a call when it may be empty, or the call's indentation
 
 ## WebAssembly
 
-The library (`src/lib.rs`) is the pipeline of `fsm write` without a file system, built as a WebAssembly module without imports and without wasm-bindgen (`fsm diff` and `fsm merge` are the executable's only):
+The library (`src/lib.rs`) is the pipeline of `fsm write` without a file system, built as a WebAssembly module without imports and without wasm-bindgen:
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -449,12 +488,12 @@ function generate(request) {
 }
 ```
 
-The request holds what `fsm write` would read: every `.fsm` file the generation may need (the files to generate and the machines their submachine states use, found through the states' `submachine` hrefs: `file#id`, the file relative to the folder of the file holding the href, with its `%XX` escapes decoded), and the template's text. Paths are `/`-separated; relative ones are resolved against `cwd`, and messages show paths relative to it.
+The request holds what `fsm write` would read: every `.fsm` file the generation may need (the files to generate and the machines their submachine states use, found through the states' `submachine` paths, relative to the folder of the file holding them), and the template's text. Paths are `/`-separated; relative ones are resolved against `cwd`, and messages show paths relative to it.
 
 ```jsonc
 {
   "cwd": "/work",                          // optional, "/" by default
-  "files": { "/work/Order.fsm": "<?xml …", "/work/sub/Payment.fsm": "<?xml …" },  // path → text
+  "files": { "/work/Order.fsm": "{\n  \"format\": 1, …", "/work/sub/Payment.fsm": "{ …" },  // path → text
   "generate": ["Order.fsm"],               // the files to generate, in order
   "template": "---\nlang: ts\n---\n…",     // the template's text
   "templateName": "ts.jinja"               // its name in messages
@@ -470,13 +509,13 @@ The response holds what `fsm write` would write and print:
     { "path": "Order.ts", "content": "…", "source": "Order.fsm", "modelHash": "3f1c…" }
   ],
   "issues": [                              // its stderr lines: file:line: severity: message
-    { "file": "Order.fsm", "line": 12, "id": "s3", "severity": "warning", "message": "…" }
+    { "file": "Order.fsm", "line": 12, "id": "Cart#1", "severity": "warning", "message": "…" }
   ],
   "error": null                            // or its last line, without "fsm: "
 }
 ```
 
-A file missing from `files` is reported as `fsm write` reports a file that can't be read. `modelHash` is what `--check` looks for in a generated file.
+A file missing from `files` is reported as `fsm write` reports a file that can't be read. `modelHash` is what `--check` looks for in a generated file. An issue's `id`, which was the element's xmi:id in the old format, is now the element's [id](#ids), derived from the names (`Off`, `On.fault`, `Cart#1`): the one the code model and generated code's traces use. It is empty for the machine itself and for a problem of the file's text or shape, which `line` places.
 
 ## Coming from the Handlebars templates
 

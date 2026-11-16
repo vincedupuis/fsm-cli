@@ -4,7 +4,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::expressions as expr;
-use crate::model::{FsmModel, MachineKind, ModelIndex, PointKind, SubmachineInfo, TransitionKind, VertexType, js_trim};
+use crate::model::{
+    FsmModel, MachineKind, ModelIndex, PointKind, SubmachineInfo, TransitionKind, VertexType, js_space, js_trim,
+    unresolved,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -87,21 +90,9 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
     let protocol = model.kind == MachineKind::Protocol;
     use Severity::*;
 
-    // Identity (a region id used again can also put a state inside its own region)
     let all_regions: Vec<_> =
         model.regions.iter().chain(model.vertices.iter().flat_map(|v| v.regions.iter())).collect();
-    let mut seen = HashSet::new();
-    for id in model
-        .vertices
-        .iter()
-        .map(|v| &v.id)
-        .chain(model.transitions.iter().map(|t| &t.id))
-        .chain(all_regions.iter().map(|r| &r.id))
-    {
-        if !seen.insert(id.as_str()) {
-            c.add(id, Error, format!("Duplicate id '{id}'."));
-        }
-    }
+    check_names(&mut c);
 
     // Containment
     for (vi, v) in model.vertices.iter().enumerate() {
@@ -111,9 +102,7 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                 let owner = c.ix.vertex(&v.parent);
                 let machine_level = model.regions.iter().any(|r| r.id == v.parent);
                 if machine_level {
-                    if v.name.is_empty() {
-                        c.add(&v.id, Warning, "Connection points of the state machine need a name so submachine states can reference them.".into());
-                    }
+                    // The machine's own connection point.
                 } else if owner.is_none_or(|o| c.ix.v(o).vtype != VertexType::State) {
                     let msg = format!(
                         "{}: entry and exit points belong on the border of a state or at the top level of the state machine.",
@@ -198,24 +187,15 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
         }
     }
 
-    // Names unique within a region
-    let mut by_region: HashMap<&str, HashSet<&str>> = HashMap::new();
-    for v in &model.vertices {
-        if v.vtype != VertexType::State || v.name.is_empty() {
-            continue;
-        }
-        if !by_region.entry(&v.parent).or_default().insert(&v.name) {
-            c.add(&v.id, Warning, format!("Another state named '{}' exists in the same region.", v.name));
-        }
-    }
-
     // Vertices
     for (vi, v) in model.vertices.iter().enumerate() {
         let out: Vec<_> = c.ix.outgoing(&v.id).into_iter().filter(|t| t.kind != TransitionKind::Internal).collect();
         let inc: Vec<_> = c.ix.incoming(&v.id).into_iter().filter(|t| t.kind != TransitionKind::Internal).collect();
         match v.vtype {
             VertexType::Initial => {
-                if out.len() != 1 {
+                if out.is_empty() || (out.len() == 1 && unresolved(&out[0].target) == Some("")) {
+                    c.add(&v.id, Error, "The initial pseudostate has no target.".into());
+                } else if out.len() != 1 {
                     c.add(&v.id, Error, "An initial pseudostate must have exactly one outgoing transition.".into());
                 }
                 if !inc.is_empty() {
@@ -379,11 +359,8 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                 } else if let (Some(sub), Some(true)) = (&owner_sub, info.map(|i| i.found)) {
                     match target {
                         None => {
-                            let msg = format!(
-                                "{} has no entry or exit point with id '{}'.",
-                                c.machine_name(sub),
-                                v.point_ref
-                            );
+                            let msg =
+                                format!("{} has no entry or exit point named '{}'.", c.machine_name(sub), v.point_ref);
                             c.add(&v.id, Error, msg);
                         }
                         Some(t) if t.kind != kind => {
@@ -470,7 +447,15 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
             c.add(&t.id, Error, format!("Transition source '{}' does not exist.", t.source));
         }
         if g.is_none() {
-            c.add(&t.id, Error, format!("Transition target '{}' does not exist.", t.target));
+            match unresolved(&t.target) {
+                // An initial without target, reported on the initial pseudostate.
+                Some("") if s.is_some_and(|s| c.ix.v(s).vtype == VertexType::Initial) => {}
+                Some("") => {
+                    c.add(&t.id, Error, "The default transition of a history pseudostate has no target.".into())
+                }
+                Some(r) => c.add(&t.id, Error, format!("Transition target '{r}' does not exist.")),
+                None => c.add(&t.id, Error, format!("Transition target '{}' does not exist.", t.target)),
+            }
         }
         let (Some(s), Some(g)) = (s, g) else { continue };
         let (sv, gv) = (c.ix.v(s), c.ix.v(g));
@@ -497,8 +482,8 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
             }
         }
         if protocol {
-            if !t.effect.is_empty() {
-                c.add(&t.id, Error, "Protocol transitions cannot have effects.".into());
+            if !t.action.is_empty() {
+                c.add(&t.id, Error, "Protocol transitions cannot have actions.".into());
             }
             if !t.guard.is_empty() {
                 c.add(&t.id, Warning, "Use a precondition instead of a guard in a protocol state machine.".into());
@@ -635,6 +620,85 @@ fn distinct(items: &[Option<&str>]) -> usize {
     items.iter().collect::<HashSet<_>>().len()
 }
 
+/// Names are the identity of elements in the file: the rules of a name (no spaces, as ids and trace lines are
+/// space-separated words), names unique in the machine (the machine's,
+/// the regions' when their owner has several, the elements'), point names unique on their owner.
+fn check_names(c: &mut Checker) {
+    use Severity::Error;
+    let model = c.model;
+    // The rules of one name; false when it breaks one (it is then not compared with the others).
+    let rules = |c: &mut Checker, id: &str, name: &str, label: &str| -> bool {
+        if name.is_empty() {
+            c.add(id, Error, format!("Every {label} needs a name."));
+            return false;
+        }
+        if name.contains('.') {
+            c.add(id, Error, format!("Name '{name}' cannot contain '.'."));
+            return false;
+        }
+        if name.chars().any(js_space) {
+            c.add(id, Error, format!("Name '{name}' cannot contain spaces."));
+            return false;
+        }
+        let last = name.chars().last().map_or(0, char::len_utf8);
+        if name[..name.len() - last].contains('*') {
+            c.add(id, Error, format!("Name '{name}' can contain '*' only as its last character."));
+            return false;
+        }
+        true
+    };
+    let mut names: HashSet<String> = HashSet::new();
+    let mut unique = |c: &mut Checker, id: &str, name: &str| {
+        if !names.insert(name.to_string()) {
+            c.add(id, Error, format!("Name '{name}' is used more than once in the state machine."));
+        }
+    };
+    if rules(c, "", &model.name, "state machine") {
+        unique(c, "", &model.name);
+    }
+    let region_names =
+        |c: &mut Checker, regions: &[crate::model::Region], unique: &mut dyn FnMut(&mut Checker, &str, &str)| {
+            if regions.len() < 2 {
+                return;
+            }
+            for r in regions {
+                if rules(c, &r.id, &r.name, "region") {
+                    unique(c, &r.id, &r.name);
+                }
+            }
+        };
+    region_names(c, &model.regions, &mut unique);
+    let mut points: HashSet<(&str, &str)> = HashSet::new();
+    for v in &model.vertices {
+        match v.vtype {
+            VertexType::Initial | VertexType::ShallowHistory | VertexType::DeepHistory => {}
+            VertexType::EntryPoint | VertexType::ExitPoint | VertexType::ConnectionPointRef => {
+                let reference = v.vtype == VertexType::ConnectionPointRef;
+                let name = if reference { v.point_ref.as_str() } else { v.name.as_str() };
+                // A reference without a point is reported with the references.
+                if (reference && name.is_empty()) || !rules(c, &v.id, name, type_label(v.vtype)) {
+                    continue;
+                }
+                if name == "history" || name == "deepHistory" {
+                    c.add(&v.id, Error, format!("A point cannot be named '{name}'."));
+                } else if !points.insert((v.parent.as_str(), name)) {
+                    let owner = match c.ix.vertex(&v.parent) {
+                        Some(o) => c.name(Some(o)),
+                        None => format!("'{}'", model.name),
+                    };
+                    c.add(&v.id, Error, format!("{owner} has two points named '{name}'."));
+                }
+            }
+            _ => {
+                if rules(c, &v.id, &v.name, type_label(v.vtype)) {
+                    unique(c, &v.id, &v.name);
+                }
+                region_names(c, &v.regions, &mut unique);
+            }
+        }
+    }
+}
+
 /// Behaviors and conditions are argument-less function calls; triggers are event names or after(...).
 fn check_text(c: &mut Checker) {
     let model = c.model;
@@ -666,7 +730,7 @@ fn check_text(c: &mut Checker) {
         }
         let allow_else = matches!(s, Some(VertexType::Choice | VertexType::Junction));
         report(c, &t.id, "Guard", expr::check_guard(&t.guard, allow_else));
-        report(c, &t.id, "Effect", expr::check_actions(&t.effect));
+        report(c, &t.id, "Action", expr::check_actions(&t.action));
         report(c, &t.id, "Precondition", expr::check_condition(&t.precondition));
         report(c, &t.id, "Postcondition", expr::check_condition(&t.postcondition));
         let times = t.triggers.iter().any(|x| expr::time_trigger_ms(x).is_some());
@@ -757,10 +821,8 @@ mod tests {
     /// A machine with states A and B, A entered first, and `vertices` (id, type, name, parent).
     fn machine(vertices: &[(&str, VertexType, &str, &str)]) -> FsmModel {
         let mut m = FsmModel {
-            id: "sm".into(),
             name: "M".into(),
             kind: MachineKind::Behavioral,
-            context: String::new(),
             documentation: String::new(),
             regions: vec![Region::new("r", "")],
             vertices: vec![
@@ -776,20 +838,10 @@ mod tests {
     }
 
     fn transition(m: &mut FsmModel, source: &str, target: &str, guard: &str) {
-        m.transitions.push(Transition {
-            id: format!("t{}", m.transitions.len()),
-            source: source.into(),
-            target: target.into(),
-            kind: TransitionKind::External,
-            triggers: if source == "A" { vec!["e".into()] } else { Vec::new() },
-            guard: guard.into(),
-            effect: String::new(),
-            precondition: String::new(),
-            postcondition: String::new(),
-            points: Vec::new(),
-            label_offset: None,
-            colors: Default::default(),
-        });
+        let mut t = Transition::new(&format!("t{}", m.transitions.len()), source, target, TransitionKind::External);
+        t.triggers = if source == "A" { vec!["e".into()] } else { Vec::new() };
+        t.guard = guard.into();
+        m.transitions.push(t);
     }
 
     fn cycles(m: &FsmModel) -> Vec<(String, &'static str, String)> {

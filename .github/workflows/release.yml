@@ -3,7 +3,10 @@
 # - per platform, fsm-<version>-<platform>.tar.gz (.zip on Windows): the `fsm`
 #   executable with the templates/ folder next to it, where `-t <name>` finds them;
 # - for FSM Editor for VS Code, fsm-<version>.wasm (the library as a WebAssembly
-#   module, see README.md) and fsm-templates-<version>.tar.gz (templates/).
+#   module, see README.md), fsm-templates-<version>.tar.gz (templates/),
+#   fsm-schemas-<version>.tar.gz (schemas/, which the VSIX bundles) and
+#   fsm-cases-<version>.tar.gz (cases/, from tests/cases: the extension's tests check
+#   its reader and validator against them).
 name: Release
 
 on:
@@ -92,12 +95,14 @@ jobs:
       - name: Build the WebAssembly module
         run: cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown --locked
 
-      - name: Package the module and the templates
+      - name: Package the module, the templates, the schemas and the test cases
         run: |
           version=${GITHUB_REF_NAME#v}
           mkdir -p "$RUNNER_TEMP/dist"
           cp target/wasm32-unknown-unknown/wasm/fsm_cli.wasm "$RUNNER_TEMP/dist/fsm-$version.wasm"
           tar czf "$RUNNER_TEMP/dist/fsm-templates-$version.tar.gz" templates
+          tar czf "$RUNNER_TEMP/dist/fsm-schemas-$version.tar.gz" schemas
+          tar czf "$RUNNER_TEMP/dist/fsm-cases-$version.tar.gz" -C tests cases
 
       - uses: actions/upload-artifact@v7
         with:

@@ -248,7 +248,7 @@ pub struct TableNote {
     /// `leave`, `enter`, `entryPoint`, `exitPoint`, `fork`, `join`, `history`, `local`, `orthogonal`; problems:
     /// `topRegions`, `localRegions`, `unexpected`.
     pub kind: &'static str,
-    /// xmi:id of the element, for locations ('' when unknown).
+    /// Id of the element (derived from the names, see format.rs), for locations ('' when unknown).
     pub id: String,
     /// The element: a transition label, a pseudostate or state name.
     pub element: String,
