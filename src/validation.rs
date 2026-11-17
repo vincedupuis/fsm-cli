@@ -1,5 +1,4 @@
-//! UML 2.5.1 well-formedness rules, the text grammar and reachability: the
-//! same checks and messages as fsm-editor-vscode/src/validation.ts.
+//! UML 2.5.1 well-formedness rules, the text grammar and reachability.
 
 use std::collections::{HashMap, HashSet};
 

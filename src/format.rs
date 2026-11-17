@@ -1,7 +1,6 @@
-//! Reading `.fsm` files: a JSON document holding one state machine, without its layout (that is the
-//! `.fsm.layout` file beside it, which `fsm` never reads). The format is described in README.md ("The .fsm file
-//! format") and by `schemas/fsm.schema.json`; FSM Editor's reader (`src/format.ts` of fsm-editor-vscode) follows this
-//! one: the same problems, with the same messages, at the same lines.
+//! Reading `.fsm` files: a JSON document holding one state machine. The format is described in README.md ("The .fsm file
+//! format") and by `schemas/fsm.schema.json`; the test cases (`tests/cases`) hold the problems it gives, with their
+//! messages and lines.
 //!
 //! Reading is strict: a document that isn't JSON, or whose shape is wrong (a missing or unknown field, a value of the
 //! wrong kind, an unknown type), gives problems with their lines and no machine. A document with the right shape gives
@@ -155,7 +154,7 @@ impl Shape {
                 Some(1.0) => {}
                 Some(n) if n > 1.0 && n.fract() == 0.0 => s.add(
                     f.value.line,
-                    format!("This file is in format {}: it needs a newer version of FSM Editor.", json::number(n)),
+                    format!("This file is in format {}: this version reads format 1 only.", json::number(n)),
                 ),
                 _ => s.add(f.value.line, "Field 'format' must be 1.".to_string()),
             },

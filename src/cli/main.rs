@@ -1,4 +1,4 @@
-//! `fsm`, the command-line tool of FSM Editor: `fsm <command> [options]`. One module per command.
+//! `fsm`, a command-line tool for UML state machines: `fsm <command> [options]`. One module per command.
 
 mod write;
 
@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 const USAGE: &str = "Usage: fsm <command> [options]
 
-The command-line tool of FSM Editor, for UML state machines (.fsm files).
+A command-line tool for UML state machines (.fsm files).
 
 Commands:
   write    Generates code from state machines with a Jinja template.

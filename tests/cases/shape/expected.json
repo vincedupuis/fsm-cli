@@ -125,7 +125,7 @@
     {
       "id": "",
       "line": 2,
-      "message": "This file is in format 2: it needs a newer version of FSM Editor.",
+      "message": "This file is in format 2: this version reads format 1 only.",
       "severity": "error"
     }
   ],

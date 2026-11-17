@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/vincedupuis/fsm-cli/blob/main/schemas/fsm.schema.json",
-  "title": "FSM Editor state machine (.fsm), format 1",
-  "description": "A UML state machine, without its layout (that is the .fsm.layout file beside it). See the README of fsm-cli, \"The .fsm file format\".",
+  "title": "UML state machine (.fsm), format 1",
+  "description": "A UML state machine. See the README of fsm-cli, \"The .fsm file format\".",
   "type": "object",
   "required": [
     "format",
@@ -147,7 +147,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+          "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
         },
         "initial": {
           "$ref": "#/definitions/initial"
@@ -179,7 +179,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "state",
@@ -291,7 +291,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "choice",
@@ -316,7 +316,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "junction",
@@ -341,7 +341,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "fork",
@@ -366,7 +366,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "join",
@@ -391,7 +391,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "final",
@@ -409,7 +409,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "terminate",
@@ -427,7 +427,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+              "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
             },
             "type": {
               "const": "comment",
@@ -466,7 +466,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name, not shown on the diagram)."
+          "description": "The name, unique in the state machine (points: on their owner). Never empty, no spaces, no '.', '*' only at the end (a generated name)."
         },
         "type": {
           "enum": [

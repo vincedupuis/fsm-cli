@@ -2,11 +2,10 @@
 # GitHub Release of that tag:
 # - per platform, fsm-<version>-<platform>.tar.gz (.zip on Windows): the `fsm`
 #   executable with the templates/ folder next to it, where `-t <name>` finds them;
-# - for FSM Editor for VS Code, fsm-<version>.wasm (the library as a WebAssembly
-#   module, see README.md), fsm-templates-<version>.tar.gz (templates/),
-#   fsm-schemas-<version>.tar.gz (schemas/, which the VSIX bundles) and
-#   fsm-cases-<version>.tar.gz (cases/, from tests/cases: the extension's tests check
-#   its reader and validator against them).
+# - fsm-<version>.wasm (the library as a WebAssembly module, see README.md),
+#   fsm-templates-<version>.tar.gz (templates/), fsm-schemas-<version>.tar.gz
+#   (schemas/) and fsm-cases-<version>.tar.gz (cases/, from tests/cases: the test
+#   cases of the format).
 name: Release
 
 on:

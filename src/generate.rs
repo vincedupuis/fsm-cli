@@ -92,7 +92,7 @@ impl Loader<'_> {
         if is_old_format(&text) {
             self.refused_old = true;
             return Err(GenerateError::new(format!(
-                "{} is in the old XMI format. Open it in FSM Editor and save it to convert it.",
+                "{} is in the old XMI format: fsm reads the JSON format only.",
                 display(path)
             )));
         }
@@ -230,7 +230,7 @@ impl Loader<'_> {
     }
 }
 
-/// The model as the code model sees it: generated names (ending with `*`, which the diagram doesn't show) are no
+/// The model as the code model sees it: generated names (ending with `*`) are no
 /// names, so that the code names such elements as it names unnamed ones (`Final`, `choice`, `entry`).
 fn without_generated_names(model: &FsmModel) -> FsmModel {
     let mut m = model.clone();

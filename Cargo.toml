@@ -2,7 +2,7 @@
 name = "fsm-cli"
 version = "0.6.2"
 edition = "2024"
-description = "fsm: the command-line tool of FSM Editor. Generates code from UML state machines (.fsm files) with Jinja templates"
+description = "fsm: a command-line tool for UML state machines (.fsm files). Generates code from them with Jinja templates"
 license = "MIT"
 repository = "https://github.com/vincedupuis/fsm-cli"
 readme = "README.md"

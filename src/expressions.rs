@@ -1,5 +1,4 @@
-//! Grammar of the text a state machine may contain, with the same rules and
-//! messages as fsm-editor-vscode/media/expressions.js.
+//! Grammar of the text a state machine may contain, with its rules and messages.
 //!
 //! The state machine holds no variables: behaviors and conditions are calls to
 //! functions without arguments; the parentheses only mark the call.

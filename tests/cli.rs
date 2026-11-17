@@ -130,7 +130,7 @@ fn old_files_are_refused() {
     std::fs::write(dir.join("Old.fsm"), old).unwrap();
     let o = fsm(&dir, &["write", "Old.fsm", "-t", "ts", "-o", "out"]);
     assert_eq!(o.status.code(), Some(1));
-    assert_eq!(stderr(&o), "fsm: Old.fsm is in the old XMI format. Open it in FSM Editor and save it to convert it.\n");
+    assert_eq!(stderr(&o), "fsm: Old.fsm is in the old XMI format: fsm reads the JSON format only.\n");
     // A machine using a submachine still in the old format: that file is named.
     std::fs::write(
         dir.join("Main.fsm"),
@@ -139,7 +139,7 @@ fn old_files_are_refused() {
     .unwrap();
     let o = fsm(&dir, &["write", "Main.fsm", "-t", "ts", "-o", "out"]);
     assert_eq!(o.status.code(), Some(1));
-    assert_eq!(stderr(&o), "fsm: Old.fsm is in the old XMI format. Open it in FSM Editor and save it to convert it.\n");
+    assert_eq!(stderr(&o), "fsm: Old.fsm is in the old XMI format: fsm reads the JSON format only.\n");
     assert!(!dir.join("out").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }

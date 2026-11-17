@@ -1,8 +1,8 @@
 # fsm-cli
 
-`fsm`, the command-line tool of [FSM Editor](https://github.com/vincedupuis/fsm-editor-vscode), for its UML 2.5.1 state machines (`.fsm` files, JSON: see [The .fsm file format](#the-fsm-file-format)). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language.
+`fsm`, a command-line tool for UML 2.5.1 state machines (`.fsm` files, JSON: see [The .fsm file format](#the-fsm-file-format)). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language.
 
-It is FSM Editor's code generator: the editions for Visual Studio and JetBrains IDEs run the `fsm` executable, and the one for VS Code runs the same code built as WebAssembly, on the desktop and on the web. It validates the machines with the editors' rules and messages, and builds the code model, the language-neutral description of a machine that templates print. It is also the reference for the file format: its description below, its JSON Schemas (`schemas/`) and its test cases (`tests/cases`, the files with the problems `fsm` reports for them), which the editors check themselves against.
+It validates the machines, then builds the code model, the language-neutral description of a machine that templates print ([docs/CODEGEN.md](docs/CODEGEN.md)). The same code, built as [WebAssembly](#webassembly), runs in any host that passes it the files' texts. The file format is defined here: its description below, its JSON Schemas (`schemas/`) and its test cases (`tests/cases`, the files with the problems `fsm` reports for them), which other readers of the format can check themselves against.
 
 - [Building](#building)
 - [Usage](#usage)
@@ -52,8 +52,7 @@ fsm write "models/**/*.fsm" -t sml -o src/generated
 ```
 
 - The machines are read and validated first. Nothing is generated when a file isn't valid JSON, has the wrong shape or has validation errors: every problem is reported with its file and line. Warnings are reported too.
-- Files in the old format (XMI, FSM Editor 0.6 and earlier) are refused: `fsm: Order.fsm is in the old XMI format. Open it in FSM Editor and save it to convert it.` The same when a machine uses a submachine file still in the old format; the message names that file.
-- The layout files (`.fsm.layout`) are never read: the drawing changes nothing in the generated code.
+- Files in the old format (XMI, see [The old format](#the-old-format)) are refused: `fsm: Order.fsm is in the old XMI format: fsm reads the JSON format only.` The same when a machine uses a submachine file still in the old format; the message names that file.
 - Machines used by submachine states are read and validated too, but only the given files are generated. Generate the submachines' files as well, e.g. with `"models/*.fsm"`.
 - Quote glob patterns (`*`, `?`, `[...]`, `**`): the program expands them itself, the same in bash, zsh, PowerShell and cmd.
 - Problems, including the errors found while building the code model (such as pseudostates forming a cycle) and the warnings and errors a template reports, are printed to stderr as `file:line: severity: message`, which editors' problem matchers and CI logs understand.
@@ -64,13 +63,11 @@ fsm write "models/**/*.fsm" -t sml -o src/generated
 
 ## The .fsm file format
 
-A state machine is two files side by side: `<Name>.fsm`, the model, and `<Name>.fsm.layout`, its drawing. Both are JSON (UTF-8 without a byte order mark, LF line ends, CRLF accepted when reading, 2-space indentation, a newline at the end). The model file is meant to be read and edited by hand; it holds no ids, as elements are identified by their names, and nothing about the drawing. Nobody is expected to read the layout file, which is built for small diffs and rare merge conflicts. `fsm` reads the model files only.
+A state machine is a `<Name>.fsm` file, in JSON (UTF-8 without a byte order mark, LF line ends, CRLF accepted when reading, 2-space indentation, a newline at the end). It is meant to be read and edited by hand, and holds no ids: elements are identified by their names.
 
-The JSON Schemas of the two files are [`schemas/fsm.schema.json`](schemas/fsm.schema.json) and [`schemas/fsm-layout.schema.json`](schemas/fsm-layout.schema.json) (draft-07): an editor that knows them checks and completes the files as you type. A file may name its schema in a top-level `$schema` field, which readers ignore and FSM Editor doesn't write back. The schemas can't see one problem: a field given twice in one object, which `fsm` reports too.
+Its JSON Schema is [`schemas/fsm.schema.json`](schemas/fsm.schema.json) (draft-07): an editor that knows it checks and completes the files as you type. A file may name its schema in a top-level `$schema` field, which readers ignore and writers needn't keep. The schema can't see one problem: a field given twice in one object, which `fsm` reports too.
 
-### The model file
-
-Fields are listed in the order FSM Editor writes them. `format`, `name` and `type` are always written; the other fields only when they have content (an empty text or list is never written, with one exception below).
+Fields are listed in the order they are written. `format`, `name` and `type` are always written; the other fields only when they have content (an empty text or list is never written, with one exception below).
 
 **The machine** (the top-level object):
 
@@ -109,30 +106,30 @@ Fields are listed in the order FSM Editor writes them. `format`, `name` and `typ
 
 **Texts:**
 
-- `trigger`: the triggers as the diagram shows them, separated by `, ` (`"play, resume"`, `"after(5m)"`): event names, or `after(<number><ms|s|m|h>)`. One object per arrow. `defer`, the deferred events, is written the same way.
+- `trigger`: the triggers, separated by `, ` (`"play, resume"`, `"after(5m)"`): event names, or `after(<number><ms|s|m|h>)`. One object per arrow. `defer`, the deferred events, is written the same way.
 - `entry`, `exit`, `do`, `action`: argument-less calls separated by `; ` (`"start(); log()"`).
 - `guard`, `invariant`, `precondition`, `postcondition`: calls combined with `!`, `&&`, `||` and parentheses; `else` on the branches of a choice or junction.
 - `submachine`: the path of the other `.fsm` file, relative to this one (one machine per file).
 - `stereotype`: a name. `documentation` and a comment's `text`: free text.
 
-A comment's **`anchors`** are what it is attached to: a list of references (texts), or, for a transition, `{ "source": <reference>, "trigger": <text>, "target": <reference> }` (`trigger` and `target` left out when the transition has none). A comment without `anchors` is valid, and so is an anchor that matches nothing: the comment is drawn, without that anchor's dashed line.
+A comment's **`anchors`** are what it is attached to: a list of references (texts), or, for a transition, `{ "source": <reference>, "trigger": <text>, "target": <reference> }` (`trigger` and `target` left out when the transition has none). A comment without `anchors` is valid, and so is an anchor that matches nothing.
 
 ### Names and references
 
 - Every element, region of `regions` and point has a name, never empty.
 - Names are unique in the file among the machine, every region and every element of every type. Point names are unique on their owner, and a point can't be named `history` or `deepHistory`.
-- A name never contains spaces (ids and trace lines are space-separated words) or `.`, and contains `*` only as its last character. **A name ending with `*` is a generated name**, which the diagram doesn't show: FSM Editor gives such names to the elements it creates, except states (`choice1*`, `final1*`, `comment1*`, `region1*`, `entry1*`, …), and generated code names them as it names unnamed elements.
+- A name never contains spaces (ids and trace lines are space-separated words) or `.`, and contains `*` only as its last character. **A name ending with `*` is a generated name**, for an element that needs a name to be referenced but has none of its own (`choice1*`, `final1*`, `comment1*`, `region1*`, `entry1*`, …): generated code names such elements as it names unnamed ones.
 - A **reference** (`target`, a comment's anchors) is the name of an element; `<owner>.<point>`, a point of a state or of the machine (the owner being the machine's name); or `<owner>.history` / `<owner>.deepHistory`, the owner being the state, the region when the state has several, or the machine's name at the top level. There are no paths: `A.B.C` is never a reference.
-- Transitions, `initial`, `history` and `deepHistory` have no name. Where a transition must be found again (in the layout file, in a comment's anchor), it is found under its source by its `trigger` and `target`, then by order among identical ones.
+- Transitions, `initial`, `history` and `deepHistory` have no name. Where a transition must be found again (in a comment's anchor), it is found under its source by its `trigger` and `target`, then by order among identical ones.
 
 ### Formatting
 
 - An object is written on one line (`{ "type": "external", "target": "Off" }`) when it holds no list and no object, else one field per line; the top-level object always one field per line. A list is written one item per line.
 - Texts use JSON's minimal escapes (`\"`, `\\`, `\n`, `\t`, `\u00XX` for other control characters); other characters are written as they are.
-- Writing is deterministic: reading a file FSM Editor wrote and writing it again gives the same bytes.
+- Writing is deterministic: reading a file written this way and writing it again gives the same bytes.
 
 <details>
-<summary>An example: <code>MediaPlayer.fsm</code> (FSM Editor's example)</summary>
+<summary>An example: <code>MediaPlayer.fsm</code> (<code>tests/cases/examples</code>)</summary>
 
 ```json
 {
@@ -305,40 +302,17 @@ A submachine state, from `Order.fsm`, whose `Payment.fsm` declares the points `r
 
 A protocol machine has `"type": "protocol"`, and its transitions carry `precondition` and `postcondition`.
 
-### The layout file
+### When files are broken
 
-`<Name>.fsm.layout` holds the drawing: positions and sizes, the arrangement and sizes of regions, bend points and label positions of transitions, colors, groups. It mirrors the model file, with the same nesting, names and order:
+A reader never drops or guesses anything in the model: it either refuses the file, or reads it and keeps everything.
 
-| Object | Fields |
-| --- | --- |
-| top level | `format` (`1`, required, first), `points`, then the region fields or `regions` |
-| region fields | `initial`, `history`, `deepHistory` (each `x`, `y`, `group`, and for its arrow `bends`, `label`, `color`, `itemColors`), `elements` |
-| item of `regions` | `name`, `size` (its extent along its state's region layout), then the region fields |
-| element | `name`, `x`, `y`, `width`, `height` (states, comments, forks and joins: the others have a fixed size), `color`, `itemColors`, `group`, `regionLayout` (`"horizontal"` or `"vertical"`), `transitions`, `points`, then the region fields or `regions` |
-| point | `name`, `x`, `y`, `color`, `itemColors`, `group` (the machine's points), `transitions` |
-| transition, under its source | `trigger` and `target` (as in the model file: they identify it), `bends` (list of `{ "x", "y" }`), `label` (`{ "x", "y" }`, from the middle of the line), `color`, `itemColors`. A transition has an entry only when it has something to store. |
-
-`itemColors` gives items their own colors (`#rrggbb`), keyed by the model file's field names: `background` (a composite state's regions), `entry`, `exit`, `do`, `defer`, `invariant`, `trigger`, `guard`, `action`, `precondition`, `postcondition`.
-
-What keeps diffs small:
-
-- Every object is written one field per line, except an object holding only `x` and `y` (a bend point, a `label`, a bare position), which is one line: two people changing different elements don't touch adjacent lines.
-- `x` and `y` are relative to the top-left corner of the owning state (the diagram's origin at the top level); a point's position is relative to its owner. Bend points are relative to the top-left corner of the innermost state containing both ends of the transition (the state itself for a transition between a state and what it contains, or a self-transition; the origin at the top level). Moving a state changes its own `x` and `y` only; moving one end of a transition changes nothing in the transition's entry.
-- Numbers are rounded to 0.1. Saving rewrites nothing that didn't change: reading the two files and writing them again gives the same bytes.
-
-### When files are broken or disagree
-
-FSM Editor never drops or guesses anything in the model: it either refuses to draw the diagram, or draws it and keeps everything.
-
-1. **Not valid JSON**: no diagram, `fsm` generates nothing; the error is reported with its line.
-2. **Valid JSON, wrong shape**: a missing `format`, `name` or `type`, an unknown value or field (`"gaurd"`), a value of the wrong kind, a `format` greater than 1 ("needs a newer version of FSM Editor"). No diagram, nothing generated; each problem is reported with its line. Reading is strict: nothing is defaulted.
-3. **The right shape, a wrong meaning**: a reference that names nothing, a name used twice, a point the submachine doesn't have, a bad name, an `initial` without `target`. These are validation errors: FSM Editor draws the diagram (a transition whose target doesn't exist ends in a marker) and saves everything back as it was; `fsm` generates nothing.
-4. **An unreadable layout file**: FSM Editor places the elements automatically, with a warning, and doesn't overwrite the file until you confirm when saving.
-5. **The two files disagree** (a hand edit, a merge, a lost layout file): an element without a layout entry is placed automatically (default size, the first free spot beside the elements already in its region, its state growing to fit; the same on every open), and a layout entry that matches nothing is ignored and disappears at the next save. Opening never changes a file, and none of this is a validation error. Renaming an element by hand in the model file loses its position and the bend points of the transitions to it: names are its identity.
+1. **Not valid JSON**: the file is refused, `fsm` generates nothing; the error is reported with its line.
+2. **Valid JSON, wrong shape**: a missing `format`, `name` or `type`, an unknown value or field (`"gaurd"`), a value of the wrong kind, a `format` greater than 1 ("this version reads format 1 only"). The file is refused, nothing generated; each problem is reported with its line. Reading is strict: nothing is defaulted.
+3. **The right shape, a wrong meaning**: a reference that names nothing, a name used twice, a point the submachine doesn't have, a bad name, an `initial` without `target`. The file is read, with validation errors; `fsm` generates nothing.
 
 ### Ids
 
-The model has no ids, but `fsm` and FSM Editor derive them from the names, the same way: they name elements in problems (`id` in the [WebAssembly](#webassembly) response) and in the code model, and so in generated code's traces.
+The model has no ids, but they are derived from the names: they name elements in problems (`id` in the [WebAssembly](#webassembly) response) and in the code model, and so in generated code's traces.
 
 | Element | Id |
 | --- | --- |
@@ -350,9 +324,9 @@ The model has no ids, but `fsm` and FSM Editor derive them from the names, the s
 
 An id already taken (a name used twice, which is an error) gets `~2`, `~3`, … appended; an element without a name gets `~`.
 
-### What changed from the old format
+### The old format
 
-Until FSM Editor 0.6, a `.fsm` file was XMI 2.5.1 with a UML DI diagram, the model and the drawing in one XML file. FSM Editor still reads such files, and converts one when it is saved: it writes the JSON model file and creates the layout file, converting the machines linked to it by submachine references at the same time. `fsm` refuses them. What changed: names replace ids (unnamed elements get generated names, names used twice get a number, spaces in names become `_`); `effect` is now `action`; a machine has no `context` any more; a submachine is a file path (no `#id`), and its points are referenced by name; the layout lives in its own file, with relative coordinates; the model hash is computed from the model's content, not the file's text, so reformatting a file doesn't change it.
+Before format 1, a `.fsm` file was XMI 2.5.1. `fsm` refuses such files. What changed: names replace ids (a conversion gives unnamed elements generated names, a number to names used twice, and `_` for spaces in names); `effect` is now `action`; a machine has no `context` any more; a submachine is a file path (no `#id`), and its points are referenced by name; the model hash is computed from the model's content, not the file's text, so reformatting a file doesn't change it.
 
 ## Bundled templates
 
@@ -361,7 +335,7 @@ Until FSM Editor 0.6, a `.fsm` file was XMI 2.5.1 with a UML DI diagram, the mod
 | `ts` | TypeScript without dependencies: `OrderActions.ts` (events, states, the `OrderActions` interface to implement) and `Order.ts` (the `Order` class). |
 | `sml` | C++17 for [Boost.SML](https://github.com/boost-ext/sml): `OrderEvents.h`, `OrderActions.h`, `Order.h`, `Order.cpp`, and `FsmTimers.h` shared by the machines with time events. |
 
-Both implement UML run-to-completion semantics: an event queue, completion events, deferred events, timers through an injectable clock, do activities as start/stop hooks plus `activityDone()`, constraint checks reported to `onConstraintViolation`, one class per submachine, `onTerminate` for terminate pseudostates, and an `onTrace` hook reporting events, states entered and left, and transitions taken. FSM Editor's [CODEGEN.md](https://github.com/vincedupuis/fsm-editor-vscode/blob/main/docs/CODEGEN.md) describes how to use the generated code and what the Boost.SML template works around.
+Both implement UML run-to-completion semantics: an event queue, completion events, deferred events, timers through an injectable clock, do activities as start/stop hooks plus `activityDone()`, constraint checks reported to `onConstraintViolation`, one class per submachine, `onTerminate` for terminate pseudostates, and an `onTrace` hook reporting events, states entered and left, and transitions taken. [docs/CODEGEN.md](docs/CODEGEN.md) describes how to use the generated code and what the Boost.SML template works around.
 
 ## Writing a template
 
@@ -399,7 +373,7 @@ Templates are data: they can't run code, and every filter is built in, so genera
 
 ### Variables
 
-The [code model](https://github.com/vincedupuis/fsm-editor-vscode/blob/main/docs/CODEGEN.md#code-model-reference) of the machine, one variable per field: `machine`, `states`, `regions`, `topRegions`, `events`, `timers`, `signals`, `actions`, `conditions`, `activities`, `transitions`, `submachines`, `entryPoints`, `exitPoints`, `start`, `invariants`, `features` and `tables`. Besides them, `options` (the front matter's `options`), `config` (the whole front matter) and `lang` (the language settings: `name`, `keywords`, `escape`, `guard`).
+The [code model](docs/CODEGEN.md#code-model-reference) of the machine, one variable per field: `machine`, `states`, `regions`, `topRegions`, `events`, `timers`, `signals`, `actions`, `conditions`, `activities`, `transitions`, `submachines`, `entryPoints`, `exitPoints`, `start`, `invariants`, `features` and `tables`. Besides them, `options` (the front matter's `options`), `config` (the whole front matter) and `lang` (the language settings: `name`, `keywords`, `escape`, `guard`).
 
 ### Filters and functions
 
@@ -519,7 +493,7 @@ A file missing from `files` is reported as `fsm write` reports a file that can't
 
 ## Coming from the Handlebars templates
 
-FSM Editor's templates used to be Handlebars (`.hbs`). They no longer are: `fsm` reads Jinja templates only, and refuses a `.hbs` one. To convert a template, start from the bundled `ts.jinja` or `sml.jinja`, which were converted from `ts.hbs` and `sml.hbs` and generate the same files, and translate what you changed with this table:
+Templates used to be Handlebars (`.hbs`). They no longer are: `fsm` reads Jinja templates only, and refuses a `.hbs` one. To convert a template, start from the bundled `ts.jinja` or `sml.jinja`, which were converted from `ts.hbs` and `sml.hbs` and generate the same files, and translate what you changed with this table:
 
 | Handlebars | Jinja |
 | --- | --- |

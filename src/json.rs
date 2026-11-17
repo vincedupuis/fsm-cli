@@ -1,7 +1,6 @@
-//! A JSON reader that keeps the line of every value and of every field, for the `.fsm` and `.fsm.layout` files: their
+//! A JSON reader that keeps the line of every value and of every field, for `.fsm` files: their
 //! problems are reported with their lines. Strict JSON (RFC 8259), plus a byte order mark at the start, which is
-//! skipped. A field given twice in one object is an error. FSM Editor's reader (`src/json.ts` of fsm-editor-vscode)
-//! gives the same values and the same errors, at the same lines.
+//! skipped. A field given twice in one object is an error.
 
 use std::fmt::Write as _;
 

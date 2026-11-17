@@ -336,7 +336,7 @@ impl<'a> ModelIndex<'a> {
         self.model.transitions.iter().filter(|t| t.target == id).collect()
     }
 
-    /// Vertices drawn on the border of a state (entry/exit points and connection point references).
+    /// Vertices on the border of a state (entry/exit points and connection point references).
     pub fn is_border(&self, v: usize) -> bool {
         let v = &self.model.vertices[v];
         v.vtype == VertexType::ConnectionPointRef

@@ -1,11 +1,9 @@
 //! The test cases of the format (`tests/cases`): `.fsm` files with the problems `fsm` reports for them, in
-//! `expected.json` beside them, which `fsm` itself writes: `FSM_UPDATE_CASES=1 cargo test --test cases`. FSM Editor
-//! checks its reader and validator against the same files and problems (`npm run build:fsm` copies them).
+//! `expected.json` beside them, which `fsm` itself writes: `FSM_UPDATE_CASES=1 cargo test --test cases`.
 //!
 //! Each folder is checked as a whole, as `fsm write` would read its files (submachines resolved within it), and the
 //! JSON Schemas (`schemas/`) must agree with the reader: every file the reader takes passes `fsm.schema.json`, every
-//! file whose text or shape it refuses fails it; `layout/valid` passes `fsm-layout.schema.json` and `layout/invalid`
-//! fails it, as do the examples' layout files. (A field given twice is the exception: JSON Schema can't see it.)
+//! file whose text or shape it refuses fails it. (A field given twice is the exception: JSON Schema can't see it.)
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -29,11 +27,8 @@ fn files(dir: &Path, ext: &str) -> Vec<PathBuf> {
 }
 
 fn folders() -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = std::fs::read_dir(cases())
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.is_dir() && !p.ends_with("layout"))
-        .collect();
+    let mut out: Vec<PathBuf> =
+        std::fs::read_dir(cases()).unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir()).collect();
     out.sort();
     out
 }
@@ -137,18 +132,4 @@ fn the_model_schema_agrees_with_the_reader() {
         }
     }
     assert!(counts.0 >= 10 && counts.1 >= 10, "{counts:?}");
-}
-
-#[test]
-fn the_layout_schema() {
-    let schema = Schema::new("fsm-layout.schema.json");
-    let dirs = [("layout/valid", true), ("layout/invalid", false), ("examples", true)];
-    for (dir, valid) in dirs {
-        let list = files(&cases().join(dir), ".fsm.layout");
-        assert!(!list.is_empty());
-        for f in list {
-            let text = std::fs::read_to_string(&f).unwrap();
-            assert_eq!(schema.accepts(&text), valid, "{}", f.display());
-        }
-    }
 }
