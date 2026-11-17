@@ -1,6 +1,6 @@
 [package]
 name = "fsm-cli"
-version = "0.6.3"
+version = "0.7.0"
 edition = "2024"
 description = "fsm: a command-line tool for UML state machines (.fsm files). Generates code from them with Jinja templates"
 license = "MIT"

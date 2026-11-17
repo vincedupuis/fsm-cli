@@ -106,7 +106,7 @@ dependencies = [
 
 [[package]]
 name = "fsm-cli"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "boon",
  "minijinja",
