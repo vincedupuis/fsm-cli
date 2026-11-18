@@ -2,8 +2,7 @@
 # GitHub Release of that tag:
 # - per platform, fsm-<version>-<platform>.tar.gz (.zip on Windows): the `fsm`
 #   executable with the templates/ folder next to it, where `-t <name>` finds them;
-# - fsm-<version>.wasm (the library as a WebAssembly module, see README.md),
-#   fsm-templates-<version>.tar.gz (templates/), fsm-schemas-<version>.tar.gz
+# - fsm-templates-<version>.tar.gz (templates/), fsm-schemas-<version>.tar.gz
 #   (schemas/) and fsm-cases-<version>.tar.gz (cases/, from tests/cases: the test
 #   cases of the format).
 name: Release
@@ -80,7 +79,7 @@ jobs:
           path: ${{ runner.temp }}/dist/*
           if-no-files-found: error
 
-  wasm:
+  assets:
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -90,27 +89,26 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      # The crate type is given here: a library built as rlib and cdylib at once gets no LTO (see Cargo.toml).
-      - name: Build the WebAssembly module
-        run: cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown --locked
+      # The library touches neither files nor the process (README.md, "Library"): it builds for a target without them.
+      - name: Check the library builds for WebAssembly
+        run: cargo build --lib --release --target wasm32-unknown-unknown --locked
 
-      - name: Package the module, the templates, the schemas and the test cases
+      - name: Package the templates, the schemas and the test cases
         run: |
           version=${GITHUB_REF_NAME#v}
           mkdir -p "$RUNNER_TEMP/dist"
-          cp target/wasm32-unknown-unknown/wasm/fsm_cli.wasm "$RUNNER_TEMP/dist/fsm-$version.wasm"
           tar czf "$RUNNER_TEMP/dist/fsm-templates-$version.tar.gz" templates
           tar czf "$RUNNER_TEMP/dist/fsm-schemas-$version.tar.gz" schemas
           tar czf "$RUNNER_TEMP/dist/fsm-cases-$version.tar.gz" -C tests cases
 
       - uses: actions/upload-artifact@v7
         with:
-          name: wasm
+          name: assets
           path: ${{ runner.temp }}/dist/*
           if-no-files-found: error
 
   release:
-    needs: [build, wasm]
+    needs: [build, assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write

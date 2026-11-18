@@ -1,12 +1,9 @@
 //! The pipeline of `fsm write` (read `.fsm` files, validate them, build their code models, render them with a Jinja
-//! template), used by the program (src/cli), and the same pipeline without a file system, for WebAssembly: the
+//! template), used by the program (src/cli), and the same pipeline without a file system (`run`, `run_json`): the
 //! `.fsm` files and the template come in a JSON request, the generated files and the messages go back in a JSON
 //! response. It does what `fsm write` does but the glob expansion, the template lookup, writing the files and
-//! `--check`, which the caller does with the files it gets.
-//!
-//! WebAssembly interface (no wasm-bindgen, no imports): `fsm_alloc(len)` returns a buffer for the request,
-//! `fsm_generate(ptr, len)` frees it and returns a buffer holding the response's length (little-endian u32) followed
-//! by the response, `fsm_free(ptr, len + 4)` frees that buffer. See README.md, "WebAssembly".
+//! `--check`, which the caller does with the files it gets. It touches neither files nor the process, so a program
+//! built for WebAssembly can use it. See README.md, "Library".
 
 mod codemodel;
 pub mod expressions;
@@ -172,38 +169,6 @@ pub fn run_json(request: &[u8]) -> Vec<u8> {
     serde_json::to_vec(&response).unwrap()
 }
 
-/// A buffer of `len` bytes for the request.
-#[unsafe(no_mangle)]
-pub extern "C" fn fsm_alloc(len: usize) -> *mut u8 {
-    Box::into_raw(vec![0u8; len].into_boxed_slice()) as *mut u8
-}
-
-/// Frees a buffer.
-///
-/// # Safety
-/// `ptr` and `len` come from `fsm_alloc`, or from `fsm_generate` (`len` then includes the 4 bytes of the length);
-/// each buffer is freed once.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fsm_free(ptr: *mut u8, len: usize) {
-    drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len)) });
-}
-
-/// Runs the JSON request in `ptr` and frees it; returns the response's length (little-endian u32) followed by the
-/// JSON response.
-///
-/// # Safety
-/// `ptr` and `len` come from `fsm_alloc`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fsm_generate(ptr: *mut u8, len: usize) -> *mut u8 {
-    let request = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len)) };
-    let json = run_json(&request);
-    drop(request);
-    let mut out = Vec::with_capacity(4 + json.len());
-    out.extend_from_slice(&(json.len() as u32).to_le_bytes());
-    out.extend_from_slice(&json);
-    Box::into_raw(out.into_boxed_slice()) as *mut u8
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,17 +272,9 @@ mod tests {
     }
 
     #[test]
-    fn c_interface() {
+    fn json_interface() {
         let req = serde_json::to_vec(&request(json!({ "/w/Main.fsm": MACHINE, "/w/sub/Sub.fsm": SUB }), "t")).unwrap();
-        let response = unsafe {
-            let p = fsm_alloc(req.len());
-            std::ptr::copy_nonoverlapping(req.as_ptr(), p, req.len());
-            let r = fsm_generate(p, req.len());
-            let len = u32::from_le_bytes(std::slice::from_raw_parts(r, 4).try_into().unwrap()) as usize;
-            let json: Value = serde_json::from_slice(std::slice::from_raw_parts(r.add(4), len)).unwrap();
-            fsm_free(r, len + 4);
-            json
-        };
+        let response: Value = serde_json::from_slice(&run_json(&req)).unwrap();
         assert_eq!(response["files"][0]["content"], "Main: 1\n");
     }
 }

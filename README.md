@@ -2,14 +2,14 @@
 
 `fsm`, a command-line tool for UML 2.5.1 state machines (`.fsm` files, JSON: see [The .fsm file format](#the-fsm-file-format)). `fsm write` generates code from them with [Jinja](https://jinja.palletsprojects.com/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). One template can write any number of files, in any language.
 
-It validates the machines, then builds the code model, the language-neutral description of a machine that templates print ([docs/CODEGEN.md](docs/CODEGEN.md)). The same code, built as [WebAssembly](#webassembly), runs in any host that passes it the files' texts. The file format is defined here: its description below, its JSON Schemas (`schemas/`) and its test cases (`tests/cases`, the files with the problems `fsm` reports for them), which other readers of the format can check themselves against.
+It validates the machines, then builds the code model, the language-neutral description of a machine that templates print ([docs/CODEGEN.md](docs/CODEGEN.md)). The same pipeline is a [library](#library), without a file system, for any host that passes it the files' texts. The file format is defined here: its description below, its JSON Schemas (`schemas/`) and its test cases (`tests/cases`, the files with the problems `fsm` reports for them), which other readers of the format can check themselves against.
 
 - [Building](#building)
 - [Usage](#usage)
 - [The .fsm file format](#the-fsm-file-format)
 - [Bundled templates](#bundled-templates)
 - [Writing a template](#writing-a-template)
-- [WebAssembly](#webassembly)
+- [Library](#library)
 - [Coming from the Handlebars templates](#coming-from-the-handlebars-templates)
 
 ## Building
@@ -21,7 +21,7 @@ cargo test
 
 The program is a single executable without dependencies. Templates are files, not built into it: ship it with the `templates/` folder next to it, where `-t <name>` finds them.
 
-Prebuilt executables for Linux and macOS (x64, arm64) and Windows (x64), each with its `templates/` folder, are on the [Releases](https://github.com/vincedupuis/fsm-cli/releases) page (`fsm-<version>-<platform>.tar.gz`, `.zip` on Windows), with the WebAssembly module (`fsm-<version>.wasm`), the templates alone (`fsm-templates-<version>.tar.gz`), the JSON Schemas (`fsm-schemas-<version>.tar.gz`) and the test cases of the format (`fsm-cases-<version>.tar.gz`).
+Prebuilt executables for Linux and macOS (x64, arm64) and Windows (x64), each with its `templates/` folder, are on the [Releases](https://github.com/vincedupuis/fsm-cli/releases) page (`fsm-<version>-<platform>.tar.gz`, `.zip` on Windows), with the templates alone (`fsm-templates-<version>.tar.gz`), the JSON Schemas (`fsm-schemas-<version>.tar.gz`) and the test cases of the format (`fsm-cases-<version>.tar.gz`).
 
 ## Usage
 
@@ -312,7 +312,7 @@ A reader never drops or guesses anything in the model: it either refuses the fil
 
 ### Ids
 
-The model has no ids, but they are derived from the names: they name elements in problems (`id` in the [WebAssembly](#webassembly) response) and in the code model, and so in generated code's traces.
+The model has no ids, but they are derived from the names: they name elements in problems (`id` in the [library](#library)'s response) and in the code model, and so in generated code's traces.
 
 | Element | Id |
 | --- | --- |
@@ -432,35 +432,9 @@ void fire(int t) {
 
 Test the list before such a call when it may be empty, or the call's indentation is left as a line of spaces. `templates/ts.jinja` is a complete example to copy: it handles every step kind and has the small runtime the steps rely on.
 
-## WebAssembly
+## Library
 
-The library (`src/lib.rs`) is the pipeline of `fsm write` without a file system, built as a WebAssembly module without imports and without wasm-bindgen:
-
-```sh
-rustup target add wasm32-unknown-unknown
-cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown
-# target/wasm32-unknown-unknown/wasm/fsm_cli.wasm
-```
-
-It exports its `memory` and three functions. The request and the response are UTF-8 JSON:
-
-- `fsm_alloc(len) → ptr`: a buffer of `len` bytes, to copy the request into;
-- `fsm_generate(ptr, len) → out`: runs the request and frees its buffer. At `out`, the response's length in bytes (a little-endian u32), then the response;
-- `fsm_free(out, length + 4)`: frees the response's buffer.
-
-```js
-const x = new WebAssembly.Instance(new WebAssembly.Module(bytes), {}).exports;
-function generate(request) {
-  const req = new TextEncoder().encode(JSON.stringify(request));
-  const p = x.fsm_alloc(req.length) >>> 0;
-  new Uint8Array(x.memory.buffer, p, req.length).set(req);
-  const out = x.fsm_generate(p, req.length) >>> 0;
-  const len = new DataView(x.memory.buffer).getUint32(out, true);
-  const response = JSON.parse(new TextDecoder().decode(new Uint8Array(x.memory.buffer, out + 4, len)));
-  x.fsm_free(out, len + 4);
-  return response;
-}
-```
+The library (`src/lib.rs`, crate `fsm_cli`) is the pipeline of `fsm write` without a file system: `fsm_cli::run_json(request)` takes a JSON request and gives a JSON response (UTF-8 bytes), `fsm_cli::run` the same as Rust values. It reads no files and doesn't touch the process, so a program built for WebAssembly can use it too.
 
 The request holds what `fsm write` would read: every `.fsm` file the generation may need (the files to generate and the machines their submachine states use, found through the states' `submachine` paths, relative to the folder of the file holding them), and the template's text. Paths are `/`-separated; relative ones are resolved against `cwd`, and messages show paths relative to it.
 

@@ -10,10 +10,7 @@ keywords = ["uml", "state-machine", "code-generator", "jinja", "statechart"]
 categories = ["command-line-utilities", "development-tools"]
 publish = false
 
-# The library: the program's pipeline, and the same pipeline without a file system (see lib.rs). Built as a
-# WebAssembly module, a plain cdylib, with
-#   cargo rustc --lib --crate-type cdylib --profile wasm --target wasm32-unknown-unknown
-# The crate type is given there rather than here: a library built as rlib and cdylib at once gets no LTO.
+# The library: the program's pipeline, and the same pipeline without a file system (see lib.rs).
 [lib]
 name = "fsm_cli"
 path = "src/lib.rs"
@@ -31,12 +28,6 @@ serde_json = "1.0.154"
 lto = true
 codegen-units = 1
 strip = true
-
-# The WebAssembly module, optimized for size: about 1.2 MB, against 1.8 MB at opt-level 3 (barely faster) and
-# 1.0 MB at "z" (a third slower).
-[profile.wasm]
-inherits = "release"
-opt-level = "s"
 
 [dev-dependencies]
 boon = "0.6.1"
