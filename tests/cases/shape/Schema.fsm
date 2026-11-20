@@ -1,6 +1,6 @@
 {
   "$schema": "../../../schemas/fsm.schema.json",
-  "format": 1,
+  "version": 1,
   "name": "Schema",
   "type": "behavioral",
   "initial": {

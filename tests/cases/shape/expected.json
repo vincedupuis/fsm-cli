@@ -31,11 +31,12 @@
       "severity": "error"
     }
   ],
-  "FormatText.fsm": [
+  "FormatName.fsm": [],
+  "FormatNewer.fsm": [
     {
       "id": "",
       "line": 2,
-      "message": "Field 'format' must be 1.",
+      "message": "This file is in version 2 of the format: this version reads version 1 only.",
       "severity": "error"
     }
   ],
@@ -105,7 +106,7 @@
     {
       "id": "",
       "line": 1,
-      "message": "Missing field 'format' in the machine.",
+      "message": "Missing field 'version' in the machine.",
       "severity": "error"
     },
     {
@@ -125,7 +126,7 @@
     {
       "id": "",
       "line": 2,
-      "message": "This file is in format 2: this version reads format 1 only.",
+      "message": "This file is in version 2 of the format: this version reads version 1 only.",
       "severity": "error"
     }
   ],
@@ -333,6 +334,15 @@
       "id": "",
       "line": 28,
       "message": "Field 'type' must be \"entryPoint\" or \"exitPoint\".",
+      "severity": "error"
+    }
+  ],
+  "VersionAndFormat.fsm": [],
+  "VersionText.fsm": [
+    {
+      "id": "",
+      "line": 2,
+      "message": "Field 'version' must be 1.",
       "severity": "error"
     }
   ]

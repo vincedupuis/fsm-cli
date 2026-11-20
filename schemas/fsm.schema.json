@@ -1,21 +1,37 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/vincedupuis/fsm-cli/blob/main/schemas/fsm.schema.json",
-  "title": "UML state machine (.fsm), format 1",
+  "title": "UML state machine (.fsm), version 1",
   "description": "A UML state machine. See the README of fsm-cli, \"The .fsm file format\".",
   "type": "object",
   "required": [
-    "format",
     "name",
     "type"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "version"
+      ]
+    },
+    {
+      "required": [
+        "format"
+      ]
+    }
   ],
   "properties": {
     "$schema": {
       "type": "string"
     },
-    "format": {
+    "version": {
       "const": 1,
       "description": "The version of the format: 1."
+    },
+    "format": {
+      "const": 1,
+      "description": "Deprecated: the name of 'version' in earlier files, read the same way. Write 'version'.",
+      "deprecated": true
     },
     "name": {
       "type": "string",

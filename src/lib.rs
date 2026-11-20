@@ -175,7 +175,7 @@ mod tests {
     use serde_json::{Value, json};
 
     const MACHINE: &str = r#"{
-  "format": 1,
+  "version": 1,
   "name": "Main",
   "type": "behavioral",
   "initial": { "target": "A" },
@@ -186,7 +186,7 @@ mod tests {
 "#;
 
     const SUB: &str = r#"{
-  "format": 1,
+  "version": 1,
   "name": "Sub",
   "type": "behavioral",
   "initial": { "target": "S" },
@@ -238,12 +238,12 @@ mod tests {
     #[test]
     fn a_submachine_point_named_like_its_initial_pseudostate() {
         // Sub's point `initial` has the id `Sub.initial~2` (its initial pseudostate took `Sub.initial`).
-        let main = r#"{ "format": 1, "name": "Main", "type": "behavioral", "initial": { "target": "A" },
+        let main = r#"{ "version": 1, "name": "Main", "type": "behavioral", "initial": { "target": "A" },
   "elements": [
     { "name": "A", "type": "state", "transitions": [{ "type": "external", "trigger": "go", "target": "U.initial" }] },
     { "name": "U", "type": "state", "submachine": "Sub.fsm", "points": [{ "name": "initial", "type": "entryPoint" }] }
   ] }"#;
-        let sub = r#"{ "format": 1, "name": "Sub", "type": "behavioral",
+        let sub = r#"{ "version": 1, "name": "Sub", "type": "behavioral",
   "points": [{ "name": "initial", "type": "entryPoint", "transitions": [{ "type": "external", "target": "S" }] }],
   "initial": { "target": "S" }, "elements": [{ "name": "S", "type": "state" }] }"#;
         let r = call(request(json!({ "/w/Main.fsm": main, "/w/Sub.fsm": sub }), "t.jinja"));

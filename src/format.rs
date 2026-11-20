@@ -92,7 +92,8 @@ impl Shape {
         ok
     }
 
-    /// Checks an object's fields against `allowed` (each with its check) and `required`.
+    /// Checks an object's fields against `allowed` (each with its check) and `required` (`a|b`: one of them, named
+    /// `a` when missing).
     fn object(
         &mut self,
         node: &Node,
@@ -110,7 +111,8 @@ impl Shape {
             }
         }
         for r in required {
-            if !fields.iter().any(|f| f.key == *r) {
+            if !fields.iter().any(|f| r.split('|').any(|k| f.key == k)) {
+                let r = r.split('|').next().unwrap_or(r);
                 self.add(node.line, format!("Missing field '{r}' in {what}."));
             }
         }
@@ -147,26 +149,36 @@ impl Shape {
             self.add(node.line, "The file must hold a JSON object.".to_string());
             return;
         };
-        let mut allowed = vec!["$schema", "format", "name", "type", "documentation", "points", "regions"];
+        let mut allowed = vec!["$schema", "version", "format", "name", "type", "documentation", "points", "regions"];
         allowed.extend(REGION_FIELDS);
-        self.object(node, "the machine", &allowed, &["format", "name", "type"], &mut |s, f| match f.key.as_str() {
-            "format" => match f.value.number() {
-                Some(1.0) => {}
-                Some(n) if n > 1.0 && n.fract() == 0.0 => s.add(
-                    f.value.line,
-                    format!("This file is in format {}: this version reads format 1 only.", json::number(n)),
-                ),
-                _ => s.add(f.value.line, "Field 'format' must be 1.".to_string()),
+        self.object(
+            node,
+            "the machine",
+            &allowed,
+            &["version|format", "name", "type"],
+            &mut |s, f| match f.key.as_str() {
+                // `format`: the field's name before `version`, read the same way, never written.
+                "version" | "format" => match f.value.number() {
+                    Some(1.0) => {}
+                    Some(n) if n > 1.0 && n.fract() == 0.0 => s.add(
+                        f.value.line,
+                        format!(
+                            "This file is in version {} of the format: this version reads version 1 only.",
+                            json::number(n)
+                        ),
+                    ),
+                    _ => s.add(f.value.line, format!("Field '{}' must be 1.", f.key)),
+                },
+                "type" => {
+                    s.enumeration(f, &["behavioral", "protocol"]);
+                }
+                "points" => s.list(f, &mut |s, x| s.point(x)),
+                "$schema" | "name" | "documentation" => {
+                    s.kind(f, Kind::Text);
+                }
+                _ => s.region_field(f),
             },
-            "type" => {
-                s.enumeration(f, &["behavioral", "protocol"]);
-            }
-            "points" => s.list(f, &mut |s, x| s.point(x)),
-            "$schema" | "name" | "documentation" => {
-                s.kind(f, Kind::Text);
-            }
-            _ => s.region_field(f),
-        });
+        );
         self.regions_alone(fields);
     }
 

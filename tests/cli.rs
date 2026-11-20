@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const MACHINE: &str = r#"{
-  "format": 1,
+  "version": 1,
   "name": "Lamp",
   "type": "behavioral",
   "initial": { "target": "Off" },
@@ -112,7 +112,7 @@ fn write_and_check() {
     let compact = MACHINE
         .replace("\n", "")
         .replace("  ", "")
-        .replace(r#""format": 1, "name": "Lamp""#, r#""name": "Lamp", "format": 1"#);
+        .replace(r#""version": 1, "name": "Lamp""#, r#""name": "Lamp", "version": 1"#);
     std::fs::write(dir.join("Lamp.fsm"), compact.replace("Off", "\\u004fff")).unwrap();
     let o = fsm(&dir, &["write", "Lamp.fsm", "-t", "ts", "-o", "out", "--check"]);
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
@@ -159,7 +159,7 @@ fn problems_with_file_and_line() {
          fsm: 2 errors in the state machine; nothing was generated.\n"
     );
     // Not JSON.
-    std::fs::write(dir.join("Bad.fsm"), "{\n  \"format\": 1,\n}\n").unwrap();
+    std::fs::write(dir.join("Bad.fsm"), "{\n  \"version\": 1,\n}\n").unwrap();
     let o = fsm(&dir, &["write", "Bad.fsm", "-t", "ts", "-o", "out"]);
     assert_eq!(
         stderr(&o),

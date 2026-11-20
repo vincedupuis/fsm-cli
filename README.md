@@ -67,13 +67,13 @@ A state machine is a `<Name>.fsm` file, in JSON (UTF-8 without a byte order mark
 
 Its JSON Schema is [`schemas/fsm.schema.json`](schemas/fsm.schema.json) (draft-07): an editor that knows it checks and completes the files as you type. A file may name its schema in a top-level `$schema` field, which readers ignore and writers needn't keep. The schema can't see one problem: a field given twice in one object, which `fsm` reports too.
 
-Fields are listed in the order they are written. `format`, `name` and `type` are always written; the other fields only when they have content (an empty text or list is never written, with one exception below).
+Fields are listed in the order they are written. `version`, `name` and `type` are always written; the other fields only when they have content (an empty text or list is never written, with one exception below).
 
 **The machine** (the top-level object):
 
 | Field | |
 | --- | --- |
-| `format` | The number `1`. Required, first. |
+| `version` | The version of the format: the number `1`. Required, first. Earlier files name it `format`: read the same way, never written. |
 | `name` | The machine's name. Required. |
 | `type` | `"behavioral"` or `"protocol"`. Required. |
 | `documentation` | Text. |
@@ -133,7 +133,7 @@ A comment's **`anchors`** are what it is attached to: a list of references (text
 
 ```json
 {
-  "format": 1,
+  "version": 1,
   "name": "MediaPlayer",
   "type": "behavioral",
   "documentation": "Example UML state machine: composite and orthogonal states, deep history, choice, exit point and an internal transition.",
@@ -307,7 +307,7 @@ A protocol machine has `"type": "protocol"`, and its transitions carry `precondi
 A reader never drops or guesses anything in the model: it either refuses the file, or reads it and keeps everything.
 
 1. **Not valid JSON**: the file is refused, `fsm` generates nothing; the error is reported with its line.
-2. **Valid JSON, wrong shape**: a missing `format`, `name` or `type`, an unknown value or field (`"gaurd"`), a value of the wrong kind, a `format` greater than 1 ("this version reads format 1 only"). The file is refused, nothing generated; each problem is reported with its line. Reading is strict: nothing is defaulted.
+2. **Valid JSON, wrong shape**: a missing `version`, `name` or `type`, an unknown value or field (`"gaurd"`), a value of the wrong kind, a `version` greater than 1 ("this version reads version 1 only"). The file is refused, nothing generated; each problem is reported with its line. Reading is strict: nothing is defaulted.
 3. **The right shape, a wrong meaning**: a reference that names nothing, a name used twice, a point the submachine doesn't have, a bad name, an `initial` without `target`. The file is read, with validation errors; `fsm` generates nothing.
 
 ### Ids
@@ -326,7 +326,7 @@ An id already taken (a name used twice, which is an error) gets `~2`, `~3`, … 
 
 ### The old format
 
-Before format 1, a `.fsm` file was XMI 2.5.1. `fsm` refuses such files. What changed: names replace ids (a conversion gives unnamed elements generated names, a number to names used twice, and `_` for spaces in names); `effect` is now `action`; a machine has no `context` any more; a submachine is a file path (no `#id`), and its points are referenced by name; the model hash is computed from the model's content, not the file's text, so reformatting a file doesn't change it.
+Before version 1 of the JSON format, a `.fsm` file was XMI 2.5.1. `fsm` refuses such files. What changed: names replace ids (a conversion gives unnamed elements generated names, a number to names used twice, and `_` for spaces in names); `effect` is now `action`; a machine has no `context` any more; a submachine is a file path (no `#id`), and its points are referenced by name; the model hash is computed from the model's content, not the file's text, so reformatting a file doesn't change it.
 
 ## Bundled templates
 
@@ -441,7 +441,7 @@ The request holds what `fsm write` would read: every `.fsm` file the generation 
 ```jsonc
 {
   "cwd": "/work",                          // optional, "/" by default
-  "files": { "/work/Order.fsm": "{\n  \"format\": 1, …", "/work/sub/Payment.fsm": "{ …" },  // path → text
+  "files": { "/work/Order.fsm": "{\n  \"version\": 1, …", "/work/sub/Payment.fsm": "{ …" },  // path → text
   "generate": ["Order.fsm"],               // the files to generate, in order
   "template": "---\nlang: ts\n---\n…",     // the template's text
   "templateName": "ts.jinja"               // its name in messages
