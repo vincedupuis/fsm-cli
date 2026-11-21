@@ -567,9 +567,9 @@ fn check_pseudostate_cycles(c: &mut Checker) {
     };
     let mut done: HashSet<usize> = HashSet::new();
     let mut found: Vec<(usize, Vec<usize>)> = Vec::new();
-    for v in 0..model.vertices.len() {
+    for (v, vertex) in model.vertices.iter().enumerate() {
         // A vertex whose id is used again later is not the one transitions refer to.
-        if !passes(v) || ix.vertex(&model.vertices[v].id) != Some(v) || done.contains(&v) {
+        if !passes(v) || ix.vertex(&vertex.id) != Some(v) || done.contains(&v) {
             continue;
         }
         let (order, from) = walk(v, &next);
