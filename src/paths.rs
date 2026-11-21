@@ -9,22 +9,29 @@ pub fn slash(p: &str) -> String {
 }
 
 /// `p` resolved against `base` (when relative) and normalized, without touching the file system (like Node's
-/// `path.resolve`).
+/// `path.resolve`). The path is put back together from its parts rather than pushed: on Windows, pushing a part that
+/// reads as a drive (`C:` of `/C:/work/Order.fsm`, a `/`-separated absolute path) would start a drive-relative path
+/// (`C:work`) instead of adding a folder.
 pub fn resolve(base: &Path, p: &str) -> PathBuf {
     let joined = base.join(p);
-    let mut out = PathBuf::new();
+    let mut prefix = String::new();
+    let mut root = false;
+    let mut parts: Vec<String> = Vec::new();
     for c in joined.components() {
         match c {
+            Component::Prefix(x) => prefix = x.as_os_str().to_string_lossy().into_owned(),
+            Component::RootDir => root = true,
             Component::CurDir => {}
             Component::ParentDir => {
-                if !matches!(out.components().next_back(), None | Some(Component::RootDir | Component::Prefix(_))) {
-                    out.pop();
+                if parts.pop().is_none() && !root && prefix.is_empty() {
+                    parts.push("..".to_string());
                 }
             }
-            other => out.push(other.as_os_str()),
+            Component::Normal(x) => parts.push(x.to_string_lossy().into_owned()),
         }
     }
-    out
+    let sep = std::path::MAIN_SEPARATOR_STR;
+    PathBuf::from(format!("{prefix}{}{}", if root { sep } else { "" }, parts.join(sep)))
 }
 
 thread_local! {
@@ -223,5 +230,17 @@ mod tests {
     fn resolving() {
         assert_eq!(resolve(Path::new("/a/b"), "../c/./d.fsm"), PathBuf::from("/a/c/d.fsm"));
         assert_eq!(resolve(Path::new("/a"), "/x/../y"), PathBuf::from("/y"));
+        assert_eq!(resolve(Path::new("/"), "../a"), PathBuf::from("/a"));
+        // A `/`-separated absolute path with a drive keeps it as its first folder, on every system.
+        assert_eq!(slash(&resolve(Path::new("/C:/work/sub"), "../Payment.fsm").to_string_lossy()), "/C:/work/Payment.fsm");
+        assert_eq!(slash(&resolve(Path::new("/C:/work"), "Order.fsm").to_string_lossy()), "/C:/work/Order.fsm");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolving_windows_paths() {
+        assert_eq!(resolve(Path::new(r"C:\work\sub"), r"..\Payment.fsm"), PathBuf::from(r"C:\work\Payment.fsm"));
+        assert_eq!(resolve(Path::new(r"C:\work"), r"D:\other\x.fsm"), PathBuf::from(r"D:\other\x.fsm"));
+        assert_eq!(resolve(Path::new(r"\\server\share\a"), "b.fsm"), PathBuf::from(r"\\server\share\a\b.fsm"));
     }
 }
