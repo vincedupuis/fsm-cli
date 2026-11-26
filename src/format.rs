@@ -7,10 +7,10 @@
 //! the machine, whatever it means: names used twice and references that name nothing are the validator's to report.
 //!
 //! The model is flat (model.rs), and its ids are derived from the names:
-//! - an element: its name; a region of `regions`: its name;
-//! - the region of a state with one region: `<state>.`; the machine's only region: `<machine>.`;
+//! - an element: its name; a region of `regions` (named): its name;
+//! - the unnamed region of a state: `<state>.`; the machine's unnamed region: `<machine>.`;
 //! - an initial, history or deep history pseudostate: `<owner>.initial`, `<owner>.history`, `<owner>.deepHistory`,
-//!   the owner being the state, the region when the state (or machine) has several, or the machine;
+//!   the owner being its region when the region is named, else the state, or the machine;
 //! - a point: `<state>.<point>`, or `<machine>.<point>` for the machine's own;
 //! - a transition: `<source>#<n>`, n counting the source's transitions from 1;
 //! - an id already taken (a name used twice) gets `~2`, `~3`, ... appended; an empty name gives `~`.
@@ -149,7 +149,8 @@ impl Shape {
             self.add(node.line, "The file must hold a JSON object.".to_string());
             return;
         };
-        let mut allowed = vec!["$schema", "version", "format", "name", "type", "documentation", "points", "regions"];
+        let mut allowed =
+            vec!["$schema", "version", "format", "name", "type", "context", "documentation", "points", "regions"];
         allowed.extend(REGION_FIELDS);
         self.object(
             node,
@@ -173,7 +174,7 @@ impl Shape {
                     s.enumeration(f, &["behavioral", "protocol"]);
                 }
                 "points" => s.list(f, &mut |s, x| s.point(x)),
-                "$schema" | "name" | "documentation" => {
+                "$schema" | "name" | "context" | "documentation" => {
                     s.kind(f, Kind::Text);
                 }
                 _ => s.region_field(f),
@@ -209,12 +210,8 @@ impl Shape {
                     return;
                 }
                 let items = f.value.items().unwrap_or(&[]);
-                if items.len() < 2 {
-                    self.add(
-                        f.value.line,
-                        "Field 'regions' needs two regions or more: the fields of a single region go directly in its owner."
-                            .to_string(),
-                    );
+                if items.is_empty() {
+                    self.add(f.value.line, "Field 'regions' needs one region or more.".to_string());
                 }
                 for x in items {
                     if x.fields().is_none() {
@@ -395,7 +392,7 @@ struct Builder<'a> {
     taken: HashSet<String>,
     /// Name → id of the first element (or region of `regions`) with that name.
     by_name: HashMap<String, String>,
-    /// Region or state or machine name → its regions' history pseudostates (`owner.history` → id).
+    /// Region or state or machine name → its regions' initial and history pseudostates (`owner.history` → id).
     pseudo: HashMap<String, String>,
     /// Point references (`owner.point`) → id.
     points: HashMap<String, String>,
@@ -432,9 +429,7 @@ impl<'a> Builder<'a> {
         ] {
             let Some(f) = node.get(key) else { continue };
             let vid = self.alloc(&format!("{owner}.{key}"));
-            if key != "initial" {
-                self.pseudo.entry(format!("{owner}.{key}")).or_insert_with(|| vid.clone());
-            }
+            self.pseudo.entry(format!("{owner}.{key}")).or_insert_with(|| vid.clone());
             self.lines.insert(vid.clone(), f.line);
             self.model.vertices.push(Vertex::new(&vid, vtype, "", &id));
             // The default transition, when there is one: a target or an action (an action without a target is reported).
@@ -547,7 +542,9 @@ impl<'a> Builder<'a> {
     fn resolve(&self, reference: &str) -> String {
         let found = match reference.split_once('.') {
             None => self.by_name.get(reference),
-            Some((_, rest)) if rest == "history" || rest == "deepHistory" => self.pseudo.get(reference),
+            Some((_, rest)) if rest == "initial" || rest == "history" || rest == "deepHistory" => {
+                self.pseudo.get(reference)
+            }
             Some(_) => self.points.get(reference),
         };
         match found {
@@ -570,6 +567,7 @@ pub fn read_machine(text: &str) -> Result<ReadMachine, Vec<Problem>> {
         model: FsmModel {
             name: name.clone(),
             kind,
+            context: self::text(&root, "context"),
             documentation: self::text(&root, "documentation"),
             regions: Vec::new(),
             vertices: Vec::new(),

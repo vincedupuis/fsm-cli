@@ -237,18 +237,21 @@ mod tests {
 
     #[test]
     fn a_submachine_point_named_like_its_initial_pseudostate() {
-        // Sub's point `initial` has the id `Sub.initial~2` (its initial pseudostate took `Sub.initial`).
+        // Sub's point `initial` has the id `Sub.initial~2` (its initial pseudostate took `Sub.initial`), and is refused:
+        // `<owner>.initial` is a reference to the initial pseudostate.
         let main = r#"{ "version": 1, "name": "Main", "type": "behavioral", "initial": { "target": "A" },
   "elements": [
     { "name": "A", "type": "state", "transitions": [{ "type": "external", "trigger": "go", "target": "U.initial" }] },
     { "name": "U", "type": "state", "submachine": "Sub.fsm", "points": [{ "name": "initial", "type": "entryPoint" }] }
   ] }"#;
         let sub = r#"{ "version": 1, "name": "Sub", "type": "behavioral",
-  "points": [{ "name": "initial", "type": "entryPoint", "transitions": [{ "type": "external", "target": "S" }] }],
+  "points": [{ "name": "initial", "type": "entryPoint", "transitions": [{ "type": "local", "target": "S" }] }],
   "initial": { "target": "S" }, "elements": [{ "name": "S", "type": "state" }] }"#;
         let r = call(request(json!({ "/w/Main.fsm": main, "/w/Sub.fsm": sub }), "t.jinja"));
-        assert_eq!(r["exitCode"], 0, "{r}");
-        assert_eq!(r["files"][0]["content"], "Main: 1\n");
+        assert_eq!(r["exitCode"], 1, "{r}");
+        let messages: Vec<&str> = r["issues"].as_array().unwrap().iter().map(|i| i["message"].as_str().unwrap()).collect();
+        assert!(messages.contains(&"A point cannot be named 'initial'."), "{r}");
+        assert!(r["issues"].as_array().unwrap().iter().any(|i| i["id"] == "Sub.initial~2"), "{r}");
     }
 
     #[test]

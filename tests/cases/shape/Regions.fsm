@@ -7,11 +7,7 @@
     {
       "name": "A",
       "type": "state",
-      "regions": [
-        {
-          "name": "only"
-        }
-      ],
+      "regions": [],
       "initial": {}
     },
     {

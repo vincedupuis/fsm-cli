@@ -263,6 +263,9 @@ fn before_paren(s: &str) -> &str {
 }
 
 /// Event name (used for triggers and deferrable events).
+/// The any-receive trigger: any event the other transitions of its state don't name.
+pub const ANY_RECEIVE: &str = "all";
+
 pub fn check_event(text: &str) -> Result<(), String> {
     let s = js_trim(text);
     if s.is_empty() {
@@ -270,6 +273,9 @@ pub fn check_event(text: &str) -> Result<(), String> {
     }
     if starts_with_word(s, "after") {
         return Err("A time event cannot be deferred; use a named event.".to_string());
+    }
+    if s == ANY_RECEIVE {
+        return Err("The any-receive event (all) cannot be deferred; use a named event.".to_string());
     }
     if s.contains('(') {
         return Err(format!("Events are plain names without (): write {}.", before_paren(s)));
@@ -322,13 +328,11 @@ fn parse_time(s: &str) -> Option<(&str, &str)> {
 pub fn check_trigger(text: &str) -> Result<(), String> {
     let s = js_trim(text);
     if starts_with_word(s, "after") {
-        let Some((number, _)) = parse_time(s) else {
+        // A relative time event can't be negative (UML's when_non_negative): after(0) is taken at once.
+        if parse_time(s).is_none() {
             return Err(
                 "Time triggers are written after(<number><unit>) with unit ms, s, m or h, e.g. after(500ms) or after(2s).".to_string()
             );
-        };
-        if number.parse::<f64>().unwrap_or(0.0) <= 0.0 {
-            return Err("The time of an after() trigger must be greater than zero.".to_string());
         }
         return Ok(());
     }
@@ -409,7 +413,10 @@ mod tests {
         assert_eq!(time_trigger_ms(" after ( 1.5 s ) "), Some(1500.0));
         assert_eq!(time_trigger_ms("after(5)"), None);
         assert_eq!(time_trigger_ms("afterwards"), None);
-        assert!(check_trigger("after(0s)").is_err());
+        // Not negative (UML's when_non_negative): zero is taken at once.
+        assert!(check_trigger("after(0s)").is_ok());
+        assert!(check_trigger("all").is_ok());
+        assert!(check_event("all").is_err());
         assert!(check_trigger("go").is_ok());
         assert_eq!(
             check_trigger("go(1)").unwrap_err(),

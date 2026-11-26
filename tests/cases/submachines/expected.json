@@ -105,6 +105,12 @@
       "severity": "error"
     },
     {
+      "id": "Run.again#1",
+      "line": 50,
+      "message": "A local transition must go from a composite state to a vertex it contains.",
+      "severity": "error"
+    },
+    {
       "id": "Gone",
       "line": 90,
       "message": "State 'Gone' can never be entered.",

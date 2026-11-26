@@ -11,7 +11,7 @@
       "type": "entryPoint",
       "transitions": [
         {
-          "type": "external",
+          "type": "local",
           "target": "Work"
         }
       ]

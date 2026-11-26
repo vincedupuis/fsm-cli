@@ -130,7 +130,7 @@ Top level:
 
 | Field | |
 | --- | --- |
-| `machine` | `name` (identifier), `displayName`, `kind` (`behavioral`/`protocol`), `protocol`, `documentation`, `sourceFile`, `modelHash` (the hash of the model in the `.fsm` file, computed from its content: see `--check` in [Usage](../README.md#usage)) |
+| `machine` | `name` (identifier), `displayName`, `kind` (`behavioral`/`protocol`), `protocol`, `context` (the name of the classifier the machine belongs to, or empty), `documentation`, `sourceFile`, `modelHash` (the hash of the model in the `.fsm` file, computed from its content: see `--check` in [Usage](../README.md#usage)) |
 | `states` | All states and final states, depth first ([below](#states)). |
 | `regions`, `topRegions` | `index`, `name`, `displayName`, `top`, `owner`/`ownerIndex` (-1 at the top), `states`, `defaultSteps` (the initial transition; empty when the region has no initial pseudostate) |
 | `events` | Named events: `name`, `index`, `signalIndex`, `own` (false when only a submachine handles it) |
@@ -157,7 +157,7 @@ References to other elements are `{ name, index }` objects, or a `…Index` numb
 | `entry`, `exit` | Steps of the state's own entry: the entry behavior, then starting do activities and timers. Steps of its own exit: stopping the submachine, timers and activities, then the exit behavior. |
 | `activities`, `timers`, `deferred`, `invariant`, `stereotype`, `submachine` | `submachine` is `{ machine, href }` or null. |
 | `completes` | When the completion event occurs: `immediate`, `activities`, `regions`, `submachine`, `never` |
-| `handlers` | Triggered transitions grouped by signal: `signal`, `signalIndex`, `kind`, `candidates`, `exhaustive` (the last candidate is unconditional) |
+| `handlers` | Triggered transitions grouped by signal: `signal`, `signalIndex`, `kind`, `candidates`, `exhaustive` (the last candidate is unconditional). A transition triggered by `all` is a candidate for every event the state's other transitions don't name and the state doesn't defer. |
 | `completion` | Candidates for the completion event. |
 | `exits` | Submachine states: `{ point, candidates }` for each exit point reference. |
 
@@ -217,12 +217,13 @@ The code model and the bundled templates implement UML run-to-completion semanti
 - **Events** are queued and processed one at a time. Each run-to-completion step first selects the enabled transitions, then fires them.
 - **Priority:** the innermost states get the event first. A state's own transitions apply only when none of its substates used the event. Orthogonal regions each fire their own transition in the same step. When two selected transitions conflict (the first one fired has left the source of the other), only the first fires.
 - **Completion events** (states entered, do activities ended, all regions final, submachine finished) are processed before the next event. A completion event whose transitions are all disabled is lost.
+- **Any-receive events:** a transition triggered by `all` takes every named event that the other transitions of its state don't name, and that the state doesn't defer. Time events and completion events aren't received messages: `all` doesn't take them.
 - **Deferred events** are kept while a deferring state is active and there is no transition for them. They are dispatched again after the next state change. A deferring state has priority over transitions of the states around it.
 - **Order of actions:** exits from the innermost state outwards, then the transition actions, then entries from the outside in. Other orthogonal regions get their default entry.
 - **Choices** are evaluated when reached, after the exits and actions before them. When no branch is enabled, the generated code throws.
 - **Junctions** are static: each way through a chain of junctions becomes its own transition whose guard combines all the guards (`else` is the negation of its siblings). A transition fires only when a whole path is enabled.
 - **Forks** enter all their targets, and regions without a target get their default entry. **Joins** fire when all their source states are active and completed (join incoming transitions have no triggers).
 - **History:** shallow history restores the last active substate with default entry below it. Deep history restores all levels, including submachines. A region last left in a final state restores by default.
-- **Entry points** of a composite state: the state is entered, then the entry point's transitions. Their guards are ignored. **Exit points:** the state is exited, then the exit point's transitions are taken like a junction's.
+- **Entry points** of a composite state: the state is entered, then all the entry point's transitions, which have no guards. **Exit points:** the state is exited, then the exit point's transitions are taken like a junction's.
 - **Submachines** run as separate objects. The parent offers them each event before its own transitions (they have priority like substates), starts them by default or through an entry point, stops them when the submachine state is exited, and follows their exit points and completion.
-- **Protocol state machines:** preconditions select transitions. An event that finds no transition because a precondition is false is a protocol violation. Postconditions are checked after the transition, and invariants after every step.
+- **Protocol state machines:** preconditions select transitions. An event that finds no transition because a precondition is false is a protocol violation. On the branches of choices and junctions, the precondition selects the branch, as a guard does (a branch's `guard` in the code model). Postconditions are checked after the transition (a branch's, after the rest of its way), and invariants after every step.

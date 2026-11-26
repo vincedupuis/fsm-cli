@@ -92,6 +92,11 @@
           "type": "external",
           "guard": "b()",
           "target": "A"
+        },
+        {
+          "type": "external",
+          "guard": "else",
+          "target": "A"
         }
       ]
     },

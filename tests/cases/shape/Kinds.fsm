@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Kinds",
   "type": "behavioral",
+  "context": 2,
   "documentation": [
     "x"
   ],

@@ -117,7 +117,7 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                 } else if c.ix.v(owner.unwrap()).regions.is_empty() {
                     let msg =
                         format!("Only composite states can have entry/exit points; add a region to {}.", c.name(owner));
-                    c.add(&v.id, Warning, msg);
+                    c.add(&v.id, Error, msg);
                 }
             }
             VertexType::ConnectionPointRef => {
@@ -224,6 +224,9 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                 }
             }
             VertexType::ShallowHistory | VertexType::DeepHistory => {
+                if protocol {
+                    c.add(&v.id, Error, "A protocol state machine cannot have history pseudostates.".into());
+                }
                 if out.len() > 1 {
                     c.add(
                         &v.id,
@@ -240,14 +243,21 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                     c.add(&v.id, Error, "A fork must have at least two outgoing transitions.".into());
                 }
                 for t in &out {
-                    if !t.guard.is_empty() || !t.triggers.is_empty() {
-                        c.add(&t.id, Error, "Transitions leaving a fork cannot have guards or triggers.".into());
+                    // A protocol transition's precondition is its guard.
+                    if !t.guard.is_empty() || !t.triggers.is_empty() || (protocol && !t.precondition.is_empty()) {
+                        let what = if protocol { "preconditions" } else { "guards" };
+                        c.add(&t.id, Error, format!("Transitions leaving a fork cannot have {what} or triggers."));
+                    }
+                    if let Some(g) = c.ix.vertex(&t.target)
+                        && !matches!(c.ix.v(g).vtype, VertexType::State | VertexType::Final)
+                    {
+                        c.add(&t.id, Error, "Transitions leaving a fork must target a state.".into());
                     }
                 }
                 let regions: Vec<Option<&str>> =
                     out.iter().map(|t| c.ix.vertex(&t.target).map(|g| c.ix.v(g).parent.as_str())).collect();
                 if distinct(&regions) != regions.len() {
-                    c.add(&v.id, Warning, "The targets of a fork should be in different orthogonal regions.".into());
+                    c.add(&v.id, Error, "The targets of a fork must be in different orthogonal regions.".into());
                 }
             }
             VertexType::Join => {
@@ -258,14 +268,20 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                     c.add(&v.id, Error, "A join must have at least two incoming transitions.".into());
                 }
                 for t in &inc {
-                    if !t.guard.is_empty() || !t.triggers.is_empty() {
-                        c.add(&t.id, Error, "Transitions entering a join cannot have guards or triggers.".into());
+                    if !t.guard.is_empty() || !t.triggers.is_empty() || (protocol && !t.precondition.is_empty()) {
+                        let what = if protocol { "preconditions" } else { "guards" };
+                        c.add(&t.id, Error, format!("Transitions entering a join cannot have {what} or triggers."));
+                    }
+                    if let Some(s) = c.ix.vertex(&t.source)
+                        && c.ix.v(s).vtype != VertexType::State
+                    {
+                        c.add(&t.id, Error, "Transitions entering a join must come from a state.".into());
                     }
                 }
                 let regions: Vec<Option<&str>> =
                     inc.iter().map(|t| c.ix.vertex(&t.source).map(|s| c.ix.v(s).parent.as_str())).collect();
                 if distinct(&regions) != regions.len() {
-                    c.add(&v.id, Warning, "The sources of a join should be in different orthogonal regions.".into());
+                    c.add(&v.id, Error, "The sources of a join must be in different orthogonal regions.".into());
                 }
             }
             VertexType::Choice | VertexType::Junction => {
@@ -277,20 +293,43 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                     c.add(&v.id, Error, format!("A {kind} must have at least one outgoing transition."));
                 }
                 if out.len() > 1 {
-                    if out.iter().any(|t| js_trim(&t.guard).is_empty()) {
+                    if out.iter().any(|t| js_trim(c.ix.selector(t)).is_empty()) {
+                        let what = if protocol { "precondition" } else { "guard" };
                         c.add(
                             &v.id,
                             Warning,
-                            format!("Every branch of a {kind} with several outgoing transitions should have a guard."),
+                            format!("Every branch of a {kind} with several outgoing transitions should have a {what}."),
                         );
                     }
-                    if !out.iter().any(|t| js_trim(&t.guard) == "else") {
-                        c.add(&v.id, Info, format!("Consider an [else] branch so the {kind} can always be left."));
+                    let elses: Vec<_> = out.iter().filter(|t| js_trim(c.ix.selector(t)) == "else").collect();
+                    for t in elses.iter().skip(1) {
+                        c.add(&t.id, Error, format!("A {kind} can have at most one [else] branch."));
                     }
                 }
             }
             VertexType::EntryPoint => {
                 let owner = c.ix.vertex(&v.parent);
+                // Every transition leaving an entry point is taken, as a fork's are.
+                for t in &out {
+                    if !t.guard.is_empty() || (protocol && !t.precondition.is_empty()) {
+                        let what = if protocol { "preconditions" } else { "guards" };
+                        c.add(&t.id, Error, format!("Transitions leaving an entry point cannot have {what}."));
+                    }
+                }
+                // At most one transition into each region of its state (of the machine, for the machine's own).
+                let mut regions = HashSet::new();
+                for t in &out {
+                    let Some(target) = c.ix.vertex(&t.target) else { continue };
+                    if let Some(r) = region_within(&c, target, owner)
+                        && !regions.insert(r)
+                    {
+                        let msg = format!(
+                            "Entry point {} can have at most one transition into each region.",
+                            c.name(Some(vi))
+                        );
+                        c.add(&t.id, Error, msg);
+                    }
+                }
                 if owner.is_none() && out.is_empty() {
                     let msg =
                         format!("Entry point {} of the state machine has no outgoing transition.", c.name(Some(vi)));
@@ -469,10 +508,17 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
         if t.kind == TransitionKind::Internal && (s != g || sv.vtype != VertexType::State) {
             c.add(&t.id, Error, "An internal transition must start and end on the same state.".into());
         }
+        // UML's state_is_external: a transition leaving an entry point stays inside its state (or machine).
+        if sv.vtype == VertexType::EntryPoint && t.kind == TransitionKind::External {
+            c.add(&t.id, Error, "Transitions leaving an entry point must be local.".into());
+        }
         if t.kind == TransitionKind::Local {
             let composite = sv.vtype == VertexType::State && !sv.regions.is_empty();
             let container = if sv.vtype == VertexType::EntryPoint { &sv.parent } else { &sv.id };
-            if !(composite || sv.vtype == VertexType::EntryPoint) || !(g == s || c.ix.is_inside(g, container)) {
+            // An entry point's targets are checked with the entry point (inside its state; anywhere in the machine).
+            if !(composite || sv.vtype == VertexType::EntryPoint)
+                || !(g == s || sv.vtype == VertexType::EntryPoint || c.ix.is_inside(g, container))
+            {
                 c.add(
                     &t.id,
                     Error,
@@ -485,7 +531,7 @@ pub fn validate(model: &FsmModel, submachines: &HashMap<String, SubmachineInfo>)
                 c.add(&t.id, Error, "Protocol transitions cannot have actions.".into());
             }
             if !t.guard.is_empty() {
-                c.add(&t.id, Warning, "Use a precondition instead of a guard in a protocol state machine.".into());
+                c.add(&t.id, Error, "Protocol transitions cannot have guards: use a precondition.".into());
             }
         } else if !t.precondition.is_empty() || !t.postcondition.is_empty() {
             c.add(&t.id, Warning, "Pre/postconditions only apply to protocol state machines and are ignored.".into());
@@ -678,7 +724,8 @@ fn check_names(c: &mut Checker) {
                 if (reference && name.is_empty()) || !rules(c, &v.id, name, type_label(v.vtype)) {
                     continue;
                 }
-                if name == "history" || name == "deepHistory" {
+                // `<owner>.initial`, `<owner>.history` and `<owner>.deepHistory` are references to pseudostates.
+                if name == "initial" || name == "history" || name == "deepHistory" {
                     c.add(&v.id, Error, format!("A point cannot be named '{name}'."));
                 } else if !points.insert((v.parent.as_str(), name)) {
                     let owner = match c.ix.vertex(&v.parent) {
@@ -701,11 +748,13 @@ fn check_names(c: &mut Checker) {
 /// Behaviors and conditions are argument-less function calls; triggers are event names or after(...).
 fn check_text(c: &mut Checker) {
     let model = c.model;
+    let protocol = model.kind == MachineKind::Protocol;
     let report = |c: &mut Checker, id: &str, what: &str, r: Result<(), String>| {
         if let Err(e) = r {
             c.add(id, Severity::Error, format!("{what}: {e}"));
         }
     };
+    report(c, "", "Context of the state machine", expr::check_name(&model.context));
     for (vi, v) in model.vertices.iter().enumerate() {
         if v.vtype != VertexType::State {
             continue;
@@ -730,7 +779,13 @@ fn check_text(c: &mut Checker) {
         let allow_else = matches!(s, Some(VertexType::Choice | VertexType::Junction));
         report(c, &t.id, "Guard", expr::check_guard(&t.guard, allow_else));
         report(c, &t.id, "Action", expr::check_actions(&t.action));
-        report(c, &t.id, "Precondition", expr::check_condition(&t.precondition));
+        // A protocol transition's precondition is its guard: `else` on a choice's or junction's branch.
+        let pre = if protocol {
+            expr::check_guard(&t.precondition, allow_else)
+        } else {
+            expr::check_condition(&t.precondition)
+        };
+        report(c, &t.id, "Precondition", pre);
         report(c, &t.id, "Postcondition", expr::check_condition(&t.postcondition));
         let times = t.triggers.iter().any(|x| expr::time_trigger_ms(x).is_some());
         if times && s.is_some_and(|s| s != VertexType::State) {
@@ -741,6 +796,15 @@ fn check_text(c: &mut Checker) {
             );
         }
     }
+}
+
+/// The region of `owner` (None: the machine's top-level regions) holding vertex `v`, itself or through the states
+/// around it.
+fn region_within(c: &Checker, v: usize, owner: Option<usize>) -> Option<String> {
+    std::iter::once(v).chain(c.ix.ancestors(v)).find_map(|w| {
+        let parent = &c.ix.v(w).parent;
+        (c.ix.region_owner(parent) == Some(owner)).then(|| parent.clone())
+    })
 }
 
 fn check_reachability(c: &mut Checker) {
@@ -822,6 +886,7 @@ mod tests {
         let mut m = FsmModel {
             name: "M".into(),
             kind: MachineKind::Behavioral,
+            context: String::new(),
             documentation: String::new(),
             regions: vec![Region::new("r", "")],
             vertices: vec![

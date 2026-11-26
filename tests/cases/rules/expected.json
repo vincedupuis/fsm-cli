@@ -42,80 +42,86 @@
       "severity": "error"
     },
     {
+      "id": "A.initial",
+      "line": 32,
+      "message": "A point cannot be named 'initial'.",
+      "severity": "error"
+    },
+    {
       "id": "A.e~2",
-      "line": 36,
+      "line": 40,
       "message": "'A' has two points named 'e'.",
       "severity": "error"
     },
     {
       "id": "a*b",
-      "line": 49,
+      "line": 53,
       "message": "Name 'a*b' can contain '*' only as its last character.",
       "severity": "error"
     },
     {
       "id": "~",
-      "line": 55,
+      "line": 59,
       "message": "Every state needs a name.",
       "severity": "error"
     },
     {
       "id": "C.D",
-      "line": 59,
+      "line": 63,
       "message": "Name 'C.D' cannot contain '.'.",
       "severity": "error"
     },
     {
       "id": "Waiting for payment",
-      "line": 63,
+      "line": 67,
       "message": "Name 'Waiting for payment' cannot contain spaces.",
       "severity": "error"
     },
     {
       "id": "Names",
-      "line": 67,
+      "line": 71,
       "message": "Name 'Names' is used more than once in the state machine.",
       "severity": "error"
     },
     {
       "id": "A~2",
-      "line": 71,
+      "line": 75,
       "message": "Name 'A' is used more than once in the state machine.",
       "severity": "error"
     },
     {
       "id": "a*b",
-      "line": 49,
+      "line": 53,
       "message": "State 'a*b' can never be entered.",
       "severity": "warning"
     },
     {
       "id": "~",
-      "line": 55,
+      "line": 59,
       "message": "State state can never be entered.",
       "severity": "warning"
     },
     {
       "id": "C.D",
-      "line": 59,
+      "line": 63,
       "message": "State 'C.D' can never be entered.",
       "severity": "warning"
     },
     {
       "id": "Waiting for payment",
-      "line": 63,
+      "line": 67,
       "message": "State 'Waiting for payment' can never be entered.",
       "severity": "warning"
     },
     {
       "id": "Names",
-      "line": 67,
+      "line": 71,
       "message": "State 'Names' can never be entered.",
       "severity": "warning"
     },
     {
       "id": "A~2",
-      "line": 71,
+      "line": 75,
       "message": "State 'A' can never be entered.",
       "severity": "warning"
     }
@@ -125,7 +131,7 @@
       "id": "Simple.in",
       "line": 36,
       "message": "Only composite states can have entry/exit points; add a region to 'Simple'.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "C.in#1",
@@ -135,7 +141,7 @@
     },
     {
       "id": "C.out#1",
-      "line": 67,
+      "line": 71,
       "message": "Transitions leaving exit point 'out' must target a vertex outside 'C'.",
       "severity": "error"
     },
@@ -150,26 +156,80 @@
       "line": 17,
       "message": "Exit point 'stop' of the state machine cannot have outgoing transitions; the referencing submachine state continues from its connection point reference.",
       "severity": "error"
+    },
+    {
+      "id": "C.in#2",
+      "line": 61,
+      "message": "Transitions leaving an entry point must be local.",
+      "severity": "error"
     }
   ],
   "Protocol.fsm": [
     {
       "id": "A",
-      "line": 9,
+      "line": 23,
       "message": "States of a protocol state machine cannot have entry/exit/do behaviors ('A').",
       "severity": "error"
     },
     {
+      "id": "B.history",
+      "line": 53,
+      "message": "A protocol state machine cannot have history pseudostates.",
+      "severity": "error"
+    },
+    {
+      "id": "fork1*",
+      "line": 79,
+      "message": "A fork must have exactly one incoming transition.",
+      "severity": "error"
+    },
+    {
+      "id": "fork1*#1",
+      "line": 83,
+      "message": "Transitions leaving a fork cannot have preconditions or triggers.",
+      "severity": "error"
+    },
+    {
+      "id": "fork1*",
+      "line": 79,
+      "message": "The targets of a fork must be in different orthogonal regions.",
+      "severity": "error"
+    },
+    {
+      "id": "choice2*",
+      "line": 94,
+      "message": "A choice must have at least one incoming transition.",
+      "severity": "error"
+    },
+    {
+      "id": "choice2*",
+      "line": 94,
+      "message": "Every branch of a choice with several outgoing transitions should have a precondition.",
+      "severity": "warning"
+    },
+    {
+      "id": "Protocol.open#1",
+      "line": 11,
+      "message": "Transitions leaving an entry point cannot have preconditions.",
+      "severity": "error"
+    },
+    {
       "id": "A#1",
-      "line": 13,
+      "line": 27,
       "message": "Protocol transitions cannot have actions.",
       "severity": "error"
     },
     {
       "id": "A#1",
-      "line": 13,
-      "message": "Use a precondition instead of a guard in a protocol state machine.",
-      "severity": "warning"
+      "line": 27,
+      "message": "Protocol transitions cannot have guards: use a precondition.",
+      "severity": "error"
+    },
+    {
+      "id": "A#2",
+      "line": 36,
+      "message": "Precondition: [else] is only allowed on transitions leaving a choice or junction.",
+      "severity": "error"
     }
   ],
   "Pseudostates.fsm": [
@@ -193,7 +253,7 @@
     },
     {
       "id": "O#1",
-      "line": 102,
+      "line": 107,
       "message": "Transitions entering a join cannot have guards or triggers.",
       "severity": "error"
     },
@@ -202,12 +262,6 @@
       "line": 63,
       "message": "Every branch of a choice with several outgoing transitions should have a guard.",
       "severity": "warning"
-    },
-    {
-      "id": "choice1*",
-      "line": 63,
-      "message": "Consider an [else] branch so the choice can always be left.",
-      "severity": "info"
     },
     {
       "id": "choice2*",
@@ -222,28 +276,34 @@
       "severity": "error"
     },
     {
+      "id": "junction1*#3",
+      "line": 96,
+      "message": "A junction can have at most one [else] branch.",
+      "severity": "error"
+    },
+    {
       "id": "fork2*",
-      "line": 149,
+      "line": 154,
       "message": "A fork must have exactly one incoming transition.",
       "severity": "error"
     },
     {
       "id": "fork2*",
-      "line": 149,
+      "line": 154,
       "message": "A fork must have at least two outgoing transitions.",
       "severity": "error"
     },
     {
       "id": "join2*",
-      "line": 193,
-      "message": "The sources of a join should be in different orthogonal regions.",
-      "severity": "warning"
+      "line": 198,
+      "message": "The sources of a join must be in different orthogonal regions.",
+      "severity": "error"
     },
     {
       "id": "fork3*",
-      "line": 205,
-      "message": "The targets of a fork should be in different orthogonal regions.",
-      "severity": "warning"
+      "line": 210,
+      "message": "The targets of a fork must be in different orthogonal regions.",
+      "severity": "error"
     },
     {
       "id": "fork1*#2",
@@ -253,19 +313,19 @@
     },
     {
       "id": "Two",
-      "line": 159,
+      "line": 164,
       "message": "State 'Two' can never be entered.",
       "severity": "warning"
     },
     {
       "id": "P",
-      "line": 173,
+      "line": 178,
       "message": "State 'P' can never be entered.",
       "severity": "warning"
     },
     {
       "id": "Q",
-      "line": 183,
+      "line": 188,
       "message": "State 'Q' can never be entered.",
       "severity": "warning"
     }
@@ -402,82 +462,114 @@
       "severity": "warning"
     }
   ],
+  "Segments.fsm": [
+    {
+      "id": "fork1*#1",
+      "line": 13,
+      "message": "Transitions leaving a fork must target a state.",
+      "severity": "error"
+    },
+    {
+      "id": "C.in#1",
+      "line": 41,
+      "message": "Transitions leaving an entry point cannot have guards.",
+      "severity": "error"
+    },
+    {
+      "id": "C.in#2",
+      "line": 46,
+      "message": "Entry point 'in' can have at most one transition into each region.",
+      "severity": "error"
+    },
+    {
+      "id": "junction1*#1",
+      "line": 75,
+      "message": "Transitions entering a join must come from a state.",
+      "severity": "error"
+    }
+  ],
   "Text.fsm": [
     {
       "id": "A#1",
-      "line": 14,
+      "line": 15,
       "message": "Pre/postconditions only apply to protocol state machines and are ignored.",
       "severity": "warning"
     },
     {
+      "id": "",
+      "line": 1,
+      "message": "Context of the state machine: 'Door 1' is not a valid name: use letters, digits and _ only, not starting with a digit.",
+      "severity": "error"
+    },
+    {
       "id": "A",
-      "line": 10,
+      "line": 11,
       "message": "entry of 'A': Functions take no arguments: write start().",
       "severity": "error"
     },
     {
       "id": "A",
-      "line": 10,
+      "line": 11,
       "message": "exit of 'A': '1' is not allowed: the state machine has no variables, so use function calls like isReady() combined with !, && and ||.",
       "severity": "error"
     },
     {
       "id": "A",
-      "line": 10,
+      "line": 11,
       "message": "do of 'A': Expected a function call.",
       "severity": "error"
     },
     {
       "id": "A",
-      "line": 10,
+      "line": 11,
       "message": "Invariant of 'A': Expected a function call.",
       "severity": "error"
     },
     {
       "id": "A",
-      "line": 10,
+      "line": 11,
       "message": "Stereotype of 'A': 'Bad Name' is not a valid name: use letters, digits and _ only, not starting with a digit.",
       "severity": "error"
     },
     {
       "id": "A",
-      "line": 10,
+      "line": 11,
       "message": "Deferrable event of 'A': '2bad' is not a valid event name (letters, digits and _ only).",
       "severity": "error"
     },
     {
       "id": "Text.initial#1",
-      "line": 5,
+      "line": 6,
       "message": "Action: Functions take no arguments: write init().",
       "severity": "error"
     },
     {
       "id": "A#1",
-      "line": 14,
+      "line": 15,
       "message": "Trigger: 'go now' is not a valid event name (letters, digits and _ only).",
       "severity": "error"
     },
     {
       "id": "A#1",
-      "line": 14,
+      "line": 15,
       "message": "Guard: Expected a function call.",
       "severity": "error"
     },
     {
       "id": "A#1",
-      "line": 14,
+      "line": 15,
       "message": "Action: '1' is not allowed: the state machine has no variables, so use function calls like isReady() combined with !, && and ||.",
       "severity": "error"
     },
     {
       "id": "A#1",
-      "line": 14,
+      "line": 15,
       "message": "Precondition: Functions take no arguments: write p().",
       "severity": "error"
     },
     {
       "id": "A#1",
-      "line": 14,
+      "line": 15,
       "message": "Postcondition: Expected a function call, found '&&'.",
       "severity": "error"
     }

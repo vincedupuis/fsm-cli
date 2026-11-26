@@ -103,6 +103,8 @@ pub struct CodeMachine {
     pub display_name: String,
     pub kind: &'static str,
     pub protocol: bool,
+    /// The name of the classifier the machine belongs to ('' when none).
+    pub context: String,
     pub documentation: String,
     /// Path of the `.fsm` file, as given to the generator.
     pub source_file: String,
@@ -593,10 +595,6 @@ fn type_name(t: VertexType) -> &'static str {
     }
 }
 
-fn is_else(t: &Transition) -> bool {
-    js_trim(&t.guard) == "else"
-}
-
 /// A compiled transition (index in `transitions`), taken when the guard holds.
 type Fireable = (usize, Option<Condition>);
 
@@ -691,7 +689,8 @@ impl<'a> Builder<'a> {
 
         // Signals: named events first (own, then submachines'), then timers.
         for t in &m.transitions {
-            for trig in &t.triggers {
+            // `all`, the any-receive trigger, is no event of its own.
+            for trig in t.triggers.iter().filter(|x| js_trim(x) != expr::ANY_RECEIVE) {
                 if expr::time_trigger_ms(trig).is_none() {
                     self.event(js_trim(trig), true);
                 }
@@ -792,6 +791,7 @@ impl<'a> Builder<'a> {
                 display_name: m.name.clone(),
                 kind: m.kind.as_str(),
                 protocol: m.kind == MachineKind::Protocol,
+                context: m.context.clone(),
                 documentation: m.documentation.clone(),
                 source_file: self.options.source_file.clone(),
                 model_hash: self.options.model_hash.clone(),
@@ -1000,12 +1000,43 @@ impl<'a> Builder<'a> {
         Ok(c)
     }
 
+    /// The condition selecting the transition (see `ModelIndex::selector`): its guard, or a branch's precondition in a
+    /// protocol machine.
     fn guard_of(&mut self, t: &Transition) -> Result<Option<Condition>, CodeGenError> {
-        if is_else(t) {
+        if self.is_else(t) {
             return Ok(None);
         }
-        let what = format!("Guard of {}", self.transition_label(t));
-        self.condition(&t.guard, &what, &t.id)
+        let selector = self.ix.selector(t);
+        let what = if self.ix.selected_by_precondition(t) { "Precondition" } else { "Guard" };
+        let what = format!("{what} of {}", self.transition_label(t));
+        self.condition(selector, &what, &t.id)
+    }
+
+    /// A protocol transition's postcondition, checked once it is taken: after the whole compound transition for the
+    /// transition leaving the state, after the rest of the way for a branch.
+    fn postcondition_of(&mut self, t: &Transition, label: &str) -> Result<Option<Step>, CodeGenError> {
+        if self.model.kind != MachineKind::Protocol {
+            return Ok(None);
+        }
+        let Some(condition) = self.condition(&t.postcondition, &format!("Postcondition of {label}"), &t.id)? else {
+            return Ok(None);
+        };
+        self.features.postconditions = true;
+        Ok(Some(Step::Check { constraint: "postcondition", element: label.to_string(), condition }))
+    }
+
+    /// A branch's way, with its postcondition (protocol machines).
+    fn branch_segment(&mut self, v: usize, t: &'a Transition) -> Result<Vec<Alt>, CodeGenError> {
+        let ways = self.segment(v, t)?;
+        let label = self.transition_label(t);
+        Ok(match self.postcondition_of(t, &label)? {
+            Some(check) => seq(ways, one(vec![check])),
+            None => ways,
+        })
+    }
+
+    fn is_else(&self, t: &Transition) -> bool {
+        js_trim(self.ix.selector(t)) == "else"
     }
 
     /// Taking the transition (one segment of a compound transition): its `transition` step, for tracing, then its
@@ -1312,17 +1343,21 @@ impl<'a> Builder<'a> {
             }
             VertexType::Choice => {
                 self.features.choices = true;
-                let ordered: Vec<&Transition> =
-                    outs.iter().filter(|t| !is_else(t)).chain(outs.iter().filter(|t| is_else(t))).copied().collect();
+                let ordered: Vec<&Transition> = outs
+                    .iter()
+                    .filter(|t| !self.is_else(t))
+                    .chain(outs.iter().filter(|t| self.is_else(t)))
+                    .copied()
+                    .collect();
                 let r = self.region_ref(region)?;
                 let label = format!("choice in {}", r.name);
                 let mut branches = Vec::new();
                 for t in ordered {
                     let guard = self.guard_of(t)?;
-                    let ways = self.segment(v, t)?;
+                    let ways = self.branch_segment(v, t)?;
                     let via = union_via(ways.iter().map(|w| &w.via));
                     let steps = self.alts_to_steps(ways, &label, region)?;
-                    branches.push(ChoiceBranch { guard, is_else: is_else(t), steps, via });
+                    branches.push(ChoiceBranch { guard, is_else: self.is_else(t), steps, via });
                 }
                 // One way through the choice, going through the pseudostates of all its branches.
                 let via = union_via(branches.iter().map(|b| &b.via));
@@ -1377,19 +1412,19 @@ impl<'a> Builder<'a> {
         if outs.is_empty() {
             return Ok(one(Vec::new()));
         }
-        let guarded: Vec<&Transition> = outs.iter().filter(|t| !is_else(t)).copied().collect();
+        let guarded: Vec<&Transition> = outs.iter().filter(|t| !self.is_else(t)).copied().collect();
         let mut guards = Vec::new();
         for t in &guarded {
             guards.push(self.guard_of(t)?);
         }
         let mut out = Vec::new();
         for (i, t) in guarded.iter().enumerate() {
-            let segment = self.segment(v, t)?;
+            let segment = self.branch_segment(v, t)?;
             out.extend(seq(vec![Alt { guard: guards[i].clone(), steps: Vec::new(), via: Vec::new() }], segment));
         }
-        if let Some(else_t) = outs.iter().find(|t| is_else(t)) {
+        if let Some(else_t) = outs.iter().find(|t| self.is_else(t)) {
             let others = or(guards.into_iter().flatten().collect());
-            let segment = self.segment(v, else_t)?;
+            let segment = self.branch_segment(v, else_t)?;
             out.extend(seq(vec![Alt { guard: others.map(not), steps: Vec::new(), via: Vec::new() }], segment));
         }
         Ok(out)
@@ -1465,17 +1500,8 @@ impl<'a> Builder<'a> {
         let own = if self.is_state(pos) { Vec::new() } else { vec![self.via_of(pos)] };
         let segment = self.segment(pos, t)?;
         let mut alts = seq(one(prefix), segment);
-        let post = if self.model.kind == MachineKind::Protocol {
-            self.condition(&t.postcondition, &format!("Postcondition of {label}"), &t.id)?
-        } else {
-            None
-        };
-        if let Some(post) = post {
-            self.features.postconditions = true;
-            alts = seq(
-                alts,
-                one(vec![Step::Check { constraint: "postcondition", element: label.to_string(), condition: post }]),
-            );
+        if let Some(check) = self.postcondition_of(t, label)? {
+            alts = seq(alts, one(vec![check]));
         }
         let source = self.owner_state_of(pos)?;
         let target = self.label(self.ix.vertex(&t.target));
@@ -1528,7 +1554,9 @@ impl<'a> Builder<'a> {
     ) -> Result<Vec<CodeCandidate>, CodeGenError> {
         let label = self.transition_label(t);
         let guard = self.guard_of(t)?;
-        let pre = if self.model.kind == MachineKind::Protocol {
+        // A protocol transition leaving a state: its precondition is checked (a protocol violation when false). Leaving
+        // anything else, its precondition selects it, as its guard (`guard_of`).
+        let pre = if self.model.kind == MachineKind::Protocol && !self.ix.selected_by_precondition(t) {
             self.condition(&t.precondition, &format!("Precondition of {label}"), &t.id)?
         } else {
             None
@@ -1716,6 +1744,8 @@ impl<'a> Builder<'a> {
         // Transitions leaving the state.
         let mut handlers: Vec<CodeHandler> = Vec::new();
         let mut completion = Vec::new();
+        // Transitions triggered by `all` (UML's AnyReceiveEvent): every event the others don't name.
+        let mut any_receive = Vec::new();
         for t in self.ix.outgoing(&vx.id) {
             let Some(target) = self.ix.vertex(&t.target) else { continue };
             if t.triggers.is_empty() {
@@ -1728,6 +1758,10 @@ impl<'a> Builder<'a> {
             }
             let cands = self.candidates(t, v, Vec::new(), None)?;
             for trig in &t.triggers {
+                if js_trim(trig) == expr::ANY_RECEIVE {
+                    any_receive.extend(cands.iter().cloned());
+                    continue;
+                }
                 let sig = self.signal_of(v, trig)?;
                 let h = match handlers.iter().position(|x| x.signal == sig.name) {
                     Some(h) => h,
@@ -1743,6 +1777,23 @@ impl<'a> Builder<'a> {
                     }
                 };
                 handlers[h].candidates.extend(cands.iter().cloned());
+            }
+        }
+        if !any_receive.is_empty() {
+            // Events the state defers stay deferred: `all` names none of them.
+            let deferred: Vec<&str> = vx.deferrable.iter().map(|d| js_trim(d)).collect();
+            for e in &self.events {
+                if handlers.iter().any(|h| h.signal == e.name) || deferred.contains(&e.name.as_str()) {
+                    continue;
+                }
+                let sig = &self.signals[e.signal_index as usize];
+                handlers.push(CodeHandler {
+                    signal: sig.name.clone(),
+                    signal_index: sig.index,
+                    kind: sig.kind,
+                    candidates: any_receive.clone(),
+                    exhaustive: false,
+                });
             }
         }
         for h in &mut handlers {

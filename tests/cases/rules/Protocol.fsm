@@ -2,6 +2,20 @@
   "version": 1,
   "name": "Protocol",
   "type": "protocol",
+  "context": "Door",
+  "points": [
+    {
+      "name": "open",
+      "type": "entryPoint",
+      "transitions": [
+        {
+          "type": "local",
+          "precondition": "ready()",
+          "target": "A"
+        }
+      ]
+    }
+  ],
   "initial": {
     "target": "A"
   },
@@ -18,6 +32,12 @@
           "precondition": "p()",
           "postcondition": "q()",
           "target": "B"
+        },
+        {
+          "type": "external",
+          "trigger": "check",
+          "precondition": "else",
+          "target": "choice1*"
         }
       ],
       "entry": "e()",
@@ -26,7 +46,65 @@
     },
     {
       "name": "B",
-      "type": "state"
+      "type": "state",
+      "initial": {
+        "target": "C"
+      },
+      "history": {
+        "target": "C"
+      },
+      "elements": [
+        {
+          "name": "C",
+          "type": "state"
+        }
+      ]
+    },
+    {
+      "name": "choice1*",
+      "type": "choice",
+      "transitions": [
+        {
+          "type": "external",
+          "precondition": "isOpen()",
+          "target": "A"
+        },
+        {
+          "type": "external",
+          "precondition": "else",
+          "target": "B"
+        }
+      ]
+    },
+    {
+      "name": "fork1*",
+      "type": "fork",
+      "transitions": [
+        {
+          "type": "external",
+          "precondition": "ready()",
+          "target": "A"
+        },
+        {
+          "type": "external",
+          "target": "B"
+        }
+      ]
+    },
+    {
+      "name": "choice2*",
+      "type": "choice",
+      "transitions": [
+        {
+          "type": "external",
+          "precondition": "isOpen()",
+          "target": "A"
+        },
+        {
+          "type": "external",
+          "target": "B"
+        }
+      ]
     }
   ]
 }

@@ -55,8 +55,12 @@
           "type": "entryPoint",
           "transitions": [
             {
-              "type": "external",
+              "type": "local",
               "target": "Simple"
+            },
+            {
+              "type": "external",
+              "target": "Inner"
             }
           ]
         },

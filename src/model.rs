@@ -228,6 +228,8 @@ impl Transition {
 pub struct FsmModel {
     pub name: String,
     pub kind: MachineKind,
+    /// The name of the classifier the machine belongs to ('' when none).
+    pub context: String,
     pub documentation: String,
     pub regions: Vec<Region>,
     pub vertices: Vec<Vertex>,
@@ -370,6 +372,19 @@ impl<'a> ModelIndex<'a> {
 
     pub fn is_inside(&self, v: usize, state_id: &str) -> bool {
         self.ancestors(v).iter().any(|&a| self.model.vertices[a].id == state_id)
+    }
+
+    /// The condition that selects transition `t`: its guard, except in a protocol machine, where a transition leaving
+    /// anything but a state (a choice's branch, a junction's) is selected by its precondition, a protocol transition's
+    /// guard. A protocol transition leaving a state has its precondition checked instead (a protocol violation).
+    pub fn selector<'t>(&self, t: &'t Transition) -> &'t str {
+        if self.selected_by_precondition(t) { &t.precondition } else { &t.guard }
+    }
+
+    /// Whether `t` is selected by its precondition (see `selector`).
+    pub fn selected_by_precondition(&self, t: &Transition) -> bool {
+        self.model.kind == MachineKind::Protocol
+            && !self.vertex(&t.source).is_some_and(|s| self.v(s).vtype == VertexType::State)
     }
 
     pub fn initial_of(&self, region: &str) -> Option<usize> {

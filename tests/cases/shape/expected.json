@@ -44,60 +44,66 @@
     {
       "id": "",
       "line": 5,
+      "message": "Field 'context' must be a text.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 6,
       "message": "Field 'documentation' must be a text.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 8,
+      "line": 9,
       "message": "Field 'initial' must be an object.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 10,
+      "line": 11,
       "message": "Items of 'points' must be objects.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 16,
+      "line": 17,
       "message": "Field 'entry' must be a text.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 19,
+      "line": 20,
       "message": "Field 'defer' must be a text.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 20,
+      "line": 21,
       "message": "Field 'transitions' must be a list.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 24,
+      "line": 25,
       "message": "Items of 'elements' must be objects.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 26,
+      "line": 27,
       "message": "Field 'name' must be a text.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 28,
+      "line": 29,
       "message": "Field 'points' must be a list.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 29,
+      "line": 30,
       "message": "Field 'elements' must be a list.",
       "severity": "error"
     }
@@ -156,30 +162,30 @@
     {
       "id": "",
       "line": 10,
-      "message": "Field 'regions' needs two regions or more: the fields of a single region go directly in its owner.",
+      "message": "Field 'regions' needs one region or more.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 15,
+      "line": 11,
       "message": "Field 'initial' cannot be used with 'regions': each region has its own.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 21,
+      "line": 17,
       "message": "Missing field 'name' in a region.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 24,
+      "line": 20,
       "message": "Items of 'regions' must be objects.",
       "severity": "error"
     },
     {
       "id": "",
-      "line": 27,
+      "line": 23,
       "message": "Unknown field 'regions' in a region.",
       "severity": "error"
     },
@@ -253,7 +259,7 @@
     {
       "id": "",
       "line": 5,
-      "message": "Unknown field 'context' in the machine.",
+      "message": "Unknown field 'owner' in the machine.",
       "severity": "error"
     },
     {

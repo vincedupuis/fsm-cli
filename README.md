@@ -76,11 +76,12 @@ Fields are listed in the order they are written. `version`, `name` and `type` ar
 | `version` | The version of the format: the number `1`. Required, first. Earlier files name it `format`: read the same way, never written. |
 | `name` | The machine's name. Required. |
 | `type` | `"behavioral"` or `"protocol"`. Required. |
+| `context` | The name of the classifier (a class, a component…) the machine belongs to: not an interface. |
 | `documentation` | Text. |
 | `points` | The machine's own entry and exit points, which the states using it as a submachine connect to (list of points). |
 | the region fields, or `regions` | Its content (below). |
 
-**Region fields**, used by the machine, by a state with one region, and by each item of `regions`:
+**Region fields**, used by the machine or a state with one unnamed region, and by each item of `regions`:
 
 | Field | |
 | --- | --- |
@@ -89,7 +90,7 @@ Fields are listed in the order they are written. `version`, `name` and `type` ar
 | `deepHistory` | A deep history pseudostate, the same way. |
 | `elements` | The region's elements (list). A composite state whose only region is empty writes `"elements": []`, so that it stays composite. |
 
-**`regions`**: a list of two regions or more (orthogonal regions), each `{ "name": <text>, …region fields }`, `name` required. A state or machine with one region writes its region fields directly, and that region has no name. `regions` and the region fields can't be used together.
+**`regions`**: a list of regions, each `{ "name": <text>, …region fields }`, `name` required: two or more (orthogonal regions), or a single named region. A state or machine with one unnamed region writes its region fields directly instead. `regions` and the region fields can't be used together.
 
 **Elements** (items of `elements`): `name` and `type` (required), then by type:
 
@@ -102,24 +103,24 @@ Fields are listed in the order they are written. `version`, `name` and `type` ar
 
 **Points** (items of `points`): `name` and `type` (`"entryPoint"` or `"exitPoint"`), both required, and `transitions`. On a state: its entry and exit points. On a submachine state: the points of the submachine it uses (connection point references), by the names they have in the other file. On the machine: its own connection points.
 
-**Transitions** (items of `transitions`, inside their source, in priority order): `type` (`"external"`, `"internal"` or `"local"`, required), `trigger`, `guard`, `action`, `precondition`, `postcondition`, `target`. `target` is required, except for an internal transition, which has none.
+**Transitions** (items of `transitions`, inside their source, in priority order): `type` (`"external"`, `"internal"` or `"local"`, required; a transition leaving an entry point is `"local"`), `trigger`, `guard`, `action`, `precondition`, `postcondition`, `target`. `target` is required, except for an internal transition, which has none.
 
 **Texts:**
 
-- `trigger`: the triggers, separated by `, ` (`"play, resume"`, `"after(5m)"`): event names, or `after(<number><ms|s|m|h>)`. One object per arrow. `defer`, the deferred events, is written the same way.
+- `trigger`: the triggers, separated by `, ` (`"play, resume"`, `"after(5m)"`): event names; `after(<number><ms|s|m|h>)`, a time event (`after(0s)` is taken at once); or `all`, any event the state's other transitions don't name. One object per arrow. `defer`, the deferred events, is written the same way, with event names only.
 - `entry`, `exit`, `do`, `action`: argument-less calls separated by `; ` (`"start(); log()"`).
-- `guard`, `invariant`, `precondition`, `postcondition`: calls combined with `!`, `&&`, `||` and parentheses; `else` on the branches of a choice or junction.
+- `guard`, `invariant`, `precondition`, `postcondition`: calls combined with `!`, `&&`, `||` and parentheses; `else` on the branches of a choice or junction (their `guard`, or in a protocol machine their `precondition`).
 - `submachine`: the path of the other `.fsm` file, relative to this one (one machine per file).
-- `stereotype`: a name. `documentation` and a comment's `text`: free text.
+- `stereotype`, `context`: a name. `documentation` and a comment's `text`: free text.
 
-A comment's **`anchors`** are what it is attached to: a list of references (texts), or, for a transition, `{ "source": <reference>, "trigger": <text>, "target": <reference> }` (`trigger` and `target` left out when the transition has none). A comment without `anchors` is valid, and so is an anchor that matches nothing.
+A comment's **`anchors`** are what it is attached to: a list of references (texts: an element, a region, a point, an initial or history pseudostate, or the machine by its name), or, for a transition, `{ "source": <reference>, "trigger": <text>, "target": <reference> }` (`trigger` and `target` left out when the transition has none; an initial or history pseudostate's transition by its `source`). A comment without `anchors` is valid, and so is an anchor that matches nothing.
 
 ### Names and references
 
-- Every element, region of `regions` and point has a name, never empty.
-- Names are unique in the file among the machine, every region and every element of every type. Point names are unique on their owner, and a point can't be named `history` or `deepHistory`.
+- Every element, region of `regions` and point has a name, never empty. A region written as its owner's fields has none.
+- Names are unique in the file among the machine, every region and every element of every type. Point names are unique on their owner, and a point can't be named `initial`, `history` or `deepHistory`.
 - A name never contains spaces (ids and trace lines are space-separated words) or `.`, and contains `*` only as its last character. **A name ending with `*` is a generated name**, for an element that needs a name to be referenced but has none of its own (`choice1*`, `final1*`, `comment1*`, `region1*`, `entry1*`, …): generated code names such elements as it names unnamed ones.
-- A **reference** (`target`, a comment's anchors) is the name of an element; `<owner>.<point>`, a point of a state or of the machine (the owner being the machine's name); or `<owner>.history` / `<owner>.deepHistory`, the owner being the state, the region when the state has several, or the machine's name at the top level. There are no paths: `A.B.C` is never a reference.
+- A **reference** (`target`, a comment's anchors) is the name of an element; `<owner>.<point>`, a point of a state or of the machine (the owner being the machine's name); or `<owner>.initial` / `<owner>.history` / `<owner>.deepHistory`, the owner being the region when it is named (an item of `regions`), else the state, or the machine's name at the top level. There are no paths: `A.B.C` is never a reference.
 - Transitions, `initial`, `history` and `deepHistory` have no name. Where a transition must be found again (in a comment's anchor), it is found under its source by its `trigger` and `target`, then by order among identical ones.
 
 ### Formatting
@@ -300,7 +301,7 @@ A submachine state, from `Order.fsm`, whose `Payment.fsm` declares the points `r
 
 </details>
 
-A protocol machine has `"type": "protocol"`, and its transitions carry `precondition` and `postcondition`.
+A protocol machine has `"type": "protocol"`, and its transitions carry `precondition` and `postcondition` instead of `guard` and `action`. A transition leaving a state is allowed when its precondition holds; a branch of a choice or junction is selected by its precondition, as by a guard. Its states have no `entry`, `exit` or `do`, and it has no `history` or `deepHistory`.
 
 ### When files are broken
 
@@ -319,14 +320,14 @@ The model has no ids, but they are derived from the names: they name elements in
 | an element, a region of `regions` | its name |
 | a point | `<state>.<point>`, or `<machine>.<point>` for the machine's own |
 | an initial, history or deep history pseudostate | `<owner>.initial`, `<owner>.history`, `<owner>.deepHistory` (the owner as in references) |
-| the only region of a state, of the machine | `<state>.`, `<machine>.` |
+| the unnamed region of a state, of the machine | `<state>.`, `<machine>.` |
 | a transition | `<source>#<n>`, n counting the source's transitions from 1: `Paused#3`, `On.fault#1`, `MediaPlayer.initial#1` |
 
 An id already taken (a name used twice, which is an error) gets `~2`, `~3`, … appended; an element without a name gets `~`.
 
 ### The old format
 
-Before version 1 of the JSON format, a `.fsm` file was XMI 2.5.1. `fsm` refuses such files. What changed: names replace ids (a conversion gives unnamed elements generated names, a number to names used twice, and `_` for spaces in names); `effect` is now `action`; a machine has no `context` any more; a submachine is a file path (no `#id`), and its points are referenced by name; the model hash is computed from the model's content, not the file's text, so reformatting a file doesn't change it.
+Before version 1 of the JSON format, a `.fsm` file was XMI 2.5.1. `fsm` refuses such files. What changed: names replace ids (a conversion gives unnamed elements generated names, a number to names used twice, and `_` for spaces in names); `effect` is now `action`; a submachine is a file path (no `#id`), and its points are referenced by name; the model hash is computed from the model's content, not the file's text, so reformatting a file doesn't change it.
 
 ## Bundled templates
 

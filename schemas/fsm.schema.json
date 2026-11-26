@@ -44,6 +44,10 @@
       ],
       "description": "A behavioral or a protocol state machine."
     },
+    "context": {
+      "type": "string",
+      "description": "The name of the classifier (a class, a component...) the state machine belongs to, e.g. Door."
+    },
     "documentation": {
       "type": "string",
       "description": "Documentation of the state machine."
@@ -73,8 +77,8 @@
     },
     "regions": {
       "type": "array",
-      "minItems": 2,
-      "description": "Two regions or more (orthogonal regions). A single region's fields go directly in its owner.",
+      "minItems": 1,
+      "description": "The regions, each named: two or more (orthogonal regions), or a single named one. An unnamed single region's fields go directly in its owner.",
       "items": {
         "$ref": "#/definitions/region"
       }
@@ -261,8 +265,8 @@
             },
             "regions": {
               "type": "array",
-              "minItems": 2,
-              "description": "Two regions or more (orthogonal regions). A single region's fields go directly in its owner.",
+              "minItems": 1,
+              "description": "The regions, each named: two or more (orthogonal regions), or a single named one. An unnamed single region's fields go directly in its owner.",
               "items": {
                 "$ref": "#/definitions/region"
               }
