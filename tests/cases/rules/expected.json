@@ -1,5 +1,59 @@
 {
+  "Choices.fsm": [
+    {
+      "id": "noElse",
+      "line": 40,
+      "message": "A choice needs an [else] branch, taken when no other guard holds.",
+      "severity": "error"
+    },
+    {
+      "id": "oneGuarded",
+      "line": 56,
+      "message": "A choice needs an [else] branch, taken when no other guard holds.",
+      "severity": "error"
+    }
+  ],
   "Clean.fsm": [],
+  "Conflicts.fsm": [
+    {
+      "id": "A#2",
+      "line": 18,
+      "message": "'A' has several transitions on 'e' without guards.",
+      "severity": "error"
+    },
+    {
+      "id": "A#4",
+      "line": 28,
+      "message": "'A' has several transitions on 'after(1000ms)' without guards.",
+      "severity": "error"
+    },
+    {
+      "id": "B#2",
+      "line": 59,
+      "message": "'B' has several completion transitions without guards.",
+      "severity": "error"
+    },
+    {
+      "id": "Q#1",
+      "line": 113,
+      "message": "'P' and 'Q' are in orthogonal regions of 'O' and both leave it on 'leave' without guards.",
+      "severity": "error"
+    },
+    {
+      "id": "P#2",
+      "line": 88,
+      "message": "A transition cannot go from one orthogonal region of 'O' to another.",
+      "severity": "error"
+    }
+  ],
+  "Crossing.fsm": [
+    {
+      "id": "A#1",
+      "line": 16,
+      "message": "A transition cannot go from one orthogonal region of the state machine to another.",
+      "severity": "error"
+    }
+  ],
   "Cycles.fsm": [
     {
       "id": "j1*",
@@ -10,16 +64,72 @@
   ],
   "DefaultEntry.fsm": [
     {
-      "id": "Comp",
-      "line": 20,
-      "message": "'Comp' is entered by default but its region has no initial pseudostate.",
-      "severity": "warning"
-    },
-    {
       "id": "X",
       "line": 24,
       "message": "State 'X' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
+    },
+    {
+      "id": "Comp",
+      "line": 20,
+      "message": "'Comp' is entered by default but its region has no initial pseudostate.",
+      "severity": "error"
+    }
+  ],
+  "Entries.fsm": [
+    {
+      "id": "L.out",
+      "line": 146,
+      "message": "Exit point 'out' has no outgoing transition: leaving 'L' through it would enter no state.",
+      "severity": "error"
+    },
+    {
+      "id": "L#1",
+      "line": 168,
+      "message": "A local transition must go from a composite state to a vertex it contains.",
+      "severity": "error"
+    },
+    {
+      "id": "Z1",
+      "line": 104,
+      "message": "State 'Z1' can never be entered.",
+      "severity": "error"
+    },
+    {
+      "id": "H1",
+      "line": 116,
+      "message": "State 'H1' can never be entered.",
+      "severity": "error"
+    },
+    {
+      "id": "Deep",
+      "line": 134,
+      "message": "State 'Deep' can never be entered.",
+      "severity": "error"
+    },
+    {
+      "id": "O",
+      "line": 64,
+      "message": "'O' is entered by default but its region 'r3' has no initial pseudostate.",
+      "severity": "error"
+    },
+    {
+      "id": "O",
+      "line": 64,
+      "message": "'O' is entered by default but its region 'r2' has no initial pseudostate.",
+      "severity": "error"
+    },
+    {
+      "id": "Inner",
+      "line": 130,
+      "message": "'Inner' is entered by default but its region has no initial pseudostate.",
+      "severity": "error"
+    },
+    {
+      "id": "H",
+      "line": 112,
+      "message": "'H' is entered by default but its region has no initial pseudostate.",
+      "severity": "error"
     }
   ],
   "Names.fsm": [
@@ -93,37 +203,37 @@
       "id": "a*b",
       "line": 53,
       "message": "State 'a*b' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "~",
       "line": 59,
       "message": "State state can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "C.D",
       "line": 63,
       "message": "State 'C.D' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Waiting for payment",
       "line": 67,
       "message": "State 'Waiting for payment' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Names",
       "line": 71,
       "message": "State 'Names' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "A~2",
       "line": 75,
       "message": "State 'A' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     }
   ],
   "Points.fsm": [
@@ -149,7 +259,7 @@
       "id": "Points.start",
       "line": 9,
       "message": "Entry point 'start' of the state machine has no outgoing transition.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Points.stop#1",
@@ -204,8 +314,8 @@
     {
       "id": "choice2*",
       "line": 94,
-      "message": "Every branch of a choice with several outgoing transitions should have a precondition.",
-      "severity": "warning"
+      "message": "Every branch of a choice with several outgoing transitions needs a precondition: use [else] for the default branch.",
+      "severity": "error"
     },
     {
       "id": "Protocol.open#1",
@@ -232,12 +342,20 @@
       "severity": "error"
     }
   ],
+  "ProtocolContext.fsm": [
+    {
+      "id": "",
+      "line": 1,
+      "message": "A protocol state machine needs a context: the name of the classifier whose calls it describes.",
+      "severity": "error"
+    }
+  ],
   "Pseudostates.fsm": [
     {
       "id": "Pseudostates.history",
       "line": 8,
-      "message": "History pseudostates are only meaningful inside a composite state.",
-      "severity": "warning"
+      "message": "A history pseudostate can only be inside a composite state.",
+      "severity": "error"
     },
     {
       "id": "fork1*#2",
@@ -260,8 +378,8 @@
     {
       "id": "choice1*",
       "line": 63,
-      "message": "Every branch of a choice with several outgoing transitions should have a guard.",
-      "severity": "warning"
+      "message": "Every branch of a choice with several outgoing transitions needs a guard: use [else] for the default branch.",
+      "severity": "error"
     },
     {
       "id": "choice2*",
@@ -315,19 +433,19 @@
       "id": "Two",
       "line": 164,
       "message": "State 'Two' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "P",
       "line": 178,
       "message": "State 'P' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Q",
       "line": 188,
       "message": "State 'Q' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     }
   ],
   "Reachability.fsm": [
@@ -335,7 +453,7 @@
       "id": "",
       "line": 1,
       "message": "The top-level region has no initial pseudostate.",
-      "severity": "warning"
+      "severity": "error"
     }
   ],
   "References.fsm": [
@@ -391,19 +509,19 @@
       "id": "A",
       "line": 19,
       "message": "State 'A' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "B",
       "line": 60,
       "message": "State 'B' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "C",
       "line": 70,
       "message": "State 'C' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     }
   ],
   "Regions.fsm": [
@@ -422,44 +540,44 @@
     {
       "id": ".history",
       "line": 51,
-      "message": "History pseudostates are only meaningful inside a composite state.",
-      "severity": "warning"
-    },
-    {
-      "id": "O",
-      "line": 23,
-      "message": "'O' is entered by default but its region 'r1' has no initial pseudostate.",
-      "severity": "warning"
-    },
-    {
-      "id": "O",
-      "line": 23,
-      "message": "'O' is entered by default but its region 'left' has no initial pseudostate.",
-      "severity": "warning"
-    },
-    {
-      "id": "",
-      "line": 1,
-      "message": "The top-level region has no initial pseudostate.",
-      "severity": "warning"
+      "message": "A history pseudostate can only be inside a composite state.",
+      "severity": "error"
     },
     {
       "id": "X",
       "line": 30,
       "message": "State 'X' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Y",
       "line": 39,
       "message": "State 'Y' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "B",
       "line": 53,
       "message": "State 'B' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 1,
+      "message": "The top-level region has no initial pseudostate.",
+      "severity": "error"
+    },
+    {
+      "id": "O",
+      "line": 23,
+      "message": "'O' is entered by default but its region 'r1' has no initial pseudostate.",
+      "severity": "error"
+    },
+    {
+      "id": "O",
+      "line": 23,
+      "message": "'O' is entered by default but its region 'left' has no initial pseudostate.",
+      "severity": "error"
     }
   ],
   "Segments.fsm": [
@@ -486,14 +604,40 @@
       "line": 75,
       "message": "Transitions entering a join must come from a state.",
       "severity": "error"
+    },
+    {
+      "id": "C",
+      "line": 33,
+      "message": "'C' is entered by default but its region 'r1' has no initial pseudostate.",
+      "severity": "error"
+    },
+    {
+      "id": "C",
+      "line": 33,
+      "message": "'C' is entered by default but its region 'r2' has no initial pseudostate.",
+      "severity": "error"
+    }
+  ],
+  "StateTests.fsm": [
+    {
+      "id": "A",
+      "line": 9,
+      "message": "Invariant of 'A': 'Missing' is not a state of the state machine.",
+      "severity": "error"
+    },
+    {
+      "id": "A#1",
+      "line": 14,
+      "message": "Guard: 'Nowhere' is not a state of the state machine.",
+      "severity": "error"
     }
   ],
   "Text.fsm": [
     {
       "id": "A#1",
       "line": 15,
-      "message": "Pre/postconditions only apply to protocol state machines and are ignored.",
-      "severity": "warning"
+      "message": "Preconditions and postconditions only apply to protocol state machines.",
+      "severity": "error"
     },
     {
       "id": "",
@@ -582,18 +726,6 @@
       "severity": "error"
     },
     {
-      "id": "A#1",
-      "line": 13,
-      "message": "'A' has several completion transitions without triggers or guards.",
-      "severity": "warning"
-    },
-    {
-      "id": "A#2",
-      "line": 17,
-      "message": "'A' has several completion transitions without triggers or guards.",
-      "severity": "warning"
-    },
-    {
       "id": "A#4",
       "line": 26,
       "message": "A local transition must go from a composite state to a vertex it contains.",
@@ -602,8 +734,8 @@
     {
       "id": "A#5",
       "line": 31,
-      "message": "Pre/postconditions only apply to protocol state machines and are ignored.",
-      "severity": "warning"
+      "message": "Preconditions and postconditions only apply to protocol state machines.",
+      "severity": "error"
     },
     {
       "id": "choice1*#1",
@@ -624,6 +756,12 @@
       "severity": "error"
     },
     {
+      "id": "A#2",
+      "line": 17,
+      "message": "'A' has several completion transitions without guards.",
+      "severity": "error"
+    },
+    {
       "id": "B#2",
       "line": 49,
       "message": "Trigger: Time triggers are written after(<number><unit>) with unit ms, s, m or h, e.g. after(500ms) or after(2s).",
@@ -639,13 +777,13 @@
       "id": "C",
       "line": 71,
       "message": "State 'C' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Inner",
       "line": 90,
       "message": "State 'Inner' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     }
   ]
 }

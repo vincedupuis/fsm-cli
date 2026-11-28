@@ -262,12 +262,26 @@ pub fn machine_connection_points(model: &FsmModel) -> Vec<ConnectionPointInfo> {
         .collect()
 }
 
+/// Whether the machine can be started by default: every top-level region holding states has an initial pseudostate.
+/// A machine that can't is entered through its entry points only.
+pub fn has_default_entry(model: &FsmModel) -> bool {
+    model.regions.iter().all(|r| {
+        model.vertices.iter().any(|v| v.parent == r.id && v.vtype == VertexType::Initial)
+            || !model
+                .vertices
+                .iter()
+                .any(|v| v.parent == r.id && matches!(v.vtype, VertexType::State | VertexType::Final))
+    })
+}
+
 /// What is known about a machine referenced by submachine states.
 #[derive(Debug, Clone, Default)]
 pub struct SubmachineInfo {
     pub found: bool,
     pub name: String,
     pub points: Vec<ConnectionPointInfo>,
+    /// It can be started by default (`has_default_entry`).
+    pub default_entry: bool,
 }
 
 /// Tree navigation over the flat model. Vertices are designated by their index in `model.vertices`.

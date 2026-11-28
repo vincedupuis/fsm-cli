@@ -7,6 +7,7 @@
 lang: ts
 guard:
   prefix: "this.actions."
+  in: "this.isActive({index})"
 ---
 {#- ================================================================ macros #}
 
@@ -62,7 +63,7 @@ if ({{ b.guard | guard }}) {
 {% if s.point %}
 this.submachines[{{ s.stateIndex }}].startAt({{ s.point | quote }}); // {{ s.state }}
 {% else %}
-this.submachines[{{ s.stateIndex }}].start(); // {{ s.state }}
+this.submachines[{{ s.stateIndex }}].start?.(); // {{ s.state }}
 {% endif %}
 {% elif s.kind == "stopSubmachine" %}
 this.submachines[{{ s.stateIndex }}].stop(); // {{ s.state }}
@@ -262,7 +263,8 @@ const SOURCE_OF: readonly number[] = [{{ transitions | map(attribute="sourceInde
 
 /** A generated state machine used as a submachine. */
 interface Submachine {
-  start(): void;
+  /** Missing when the machine has no default entry (no initial pseudostate). */
+  start?(): void;
   startAt(point: string): void;
   resume(): void;
   stop(): void;
@@ -272,7 +274,7 @@ interface Submachine {
 /**
  * {{ machine.displayName }}{{ " (protocol state machine)" if machine.protocol }}.
  *
- * Events are processed one at a time, each to completion. Call start() once,
+ * Events are processed one at a time, each to completion. Call {{ "start()" if features.defaultEntry else "startAt()" }} once,
  * then dispatch() events.
  */
 export class {{ machine.name }} {
@@ -319,6 +321,7 @@ export class {{ machine.name }} {
 {% endfor %}
   }
 
+{% if features.defaultEntry %}
   /** Enters the machine through its initial pseudostates. */
   start(): void {
     this.reset();
@@ -330,6 +333,7 @@ export class {{ machine.name }} {
     }
     this.run();
   }
+{% endif %}
 
   /** Enters the machine through one of its entry points. */
   startAt(point: {{ machine.name }}EntryPoint): void {
@@ -410,7 +414,7 @@ export class {{ machine.name }} {
     let result: number;
     this.running = true;
     try {
-      result = this.process(signal);
+      result = this.process(signal{{ ", true" if machine.protocol }});
     } finally {
       this.running = false;
     }
@@ -461,7 +465,7 @@ export class {{ machine.name }} {
   }
 
   /** One run-to-completion step: selects the enabled transitions, then fires them. */
-  private process(signal: number): number {
+  private process(signal: number{{ ", offered = false" if machine.protocol }}): number {
     this.trace('event', SIGNAL_NAMES[signal], SIGNAL_NAMES[signal]);
 {% if features.preconditions %}
     this.preconditionFailed = '';
@@ -476,6 +480,11 @@ export class {{ machine.name }} {
 {% endif %}
 {% if features.preconditions %}
     else if (this.preconditionFailed) this.actions.onConstraintViolation('precondition', this.preconditionFailed);
+{% endif %}
+{% if machine.protocol %}
+    // An event that no transition of the current states takes: a protocol violation (offered by a parent machine,
+    // the parent may still take it).
+    else if (result === NONE && !offered && signal < EVENT_COUNT) this.actions.onConstraintViolation('precondition', SIGNAL_NAMES[signal]);
 {% endif %}
     this.checkInvariants();
     return result;
@@ -643,7 +652,7 @@ export class {{ machine.name }} {
     const sub = this.submachines[s];
     if (sub) {
       if (deep) sub.resume();
-      else sub.start();
+      else sub.start?.();
     }
     return true;
   }

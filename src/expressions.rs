@@ -8,7 +8,8 @@
 //! condition := or                                     guard, invariant, pre/postcondition
 //! or        := and ('||' and)*
 //! and       := unary ('&&' unary)*
-//! unary     := '!' unary | call | '(' or ')'
+//! unary     := '!' unary | call | in | '(' or ')'
+//! in        := 'in(' name ')'                          true while that state of the machine is active
 //! guard     := 'else' | condition                     'else' only on choice/junction branches
 //! trigger   := event | 'after(' number unit ')'       unit: ms, s, m, h
 //! event     := name                                   also used for deferrable events
@@ -20,14 +21,30 @@ use serde::Serialize;
 
 use crate::model::{js_space, js_trim};
 
-/// A condition tree: `{ op: "call", name }`, `{ op: "not", arg }`, `{ op: "and" | "or", args }`.
+/// A condition tree: `{ op: "call", name }`, `{ op: "in", state }`, `{ op: "not", arg }`,
+/// `{ op: "and" | "or", args }`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum Condition {
-    Call { name: String },
-    Not { arg: Box<Condition> },
-    And { args: Vec<Condition> },
-    Or { args: Vec<Condition> },
+    Call {
+        name: String,
+    },
+    /// A state test: true while `state` (a state of the machine, by name) is active. The code model gives
+    /// `stateIndex`, its index in `states`.
+    In {
+        state: String,
+        #[serde(rename = "stateIndex", skip_serializing_if = "Option::is_none")]
+        state_index: Option<usize>,
+    },
+    Not {
+        arg: Box<Condition>,
+    },
+    And {
+        args: Vec<Condition>,
+    },
+    Or {
+        args: Vec<Condition>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -171,6 +188,18 @@ impl Parser {
                 }
                 Ok(inner)
             }
+            Some(Token::Name(n))
+                if n == "in"
+                    && self.tokens.get(self.i + 1) == Some(&Token::Open)
+                    && matches!(self.tokens.get(self.i + 2), Some(Token::Name(_))) =>
+            {
+                self.i += 2;
+                let Some(Token::Name(state)) = self.next() else { unreachable!() };
+                if self.next() != Some(Token::Close) {
+                    return Err(format!("A state test names one state: write in({state})."));
+                }
+                Ok(Condition::In { state, state_index: None })
+            }
             _ => Ok(Condition::Call { name: self.call_name()? }),
         }
     }
@@ -197,6 +226,23 @@ pub fn parse_condition(text: &str) -> Result<Option<Condition>, String> {
 
 pub fn check_condition(text: &str) -> Result<(), String> {
     parse_condition(text).map(|_| ())
+}
+
+/// The states a condition tests with `in(...)`, in order (empty when the text breaks the grammar).
+pub fn state_tests(text: &str) -> Vec<String> {
+    fn visit(c: &Condition, out: &mut Vec<String>) {
+        match c {
+            Condition::Call { .. } => {}
+            Condition::In { state, .. } => out.push(state.clone()),
+            Condition::Not { arg } => visit(arg, out),
+            Condition::And { args } | Condition::Or { args } => args.iter().for_each(|a| visit(a, out)),
+        }
+    }
+    let mut out = Vec::new();
+    if let Ok(Some(c)) = parse_condition(text) {
+        visit(&c, &mut out);
+    }
+    out
 }
 
 /// Transition guard: a condition, or `else` when `allow_else` is set.
@@ -395,6 +441,23 @@ mod tests {
         );
         assert_eq!(parse_condition("a() b()").unwrap_err(), "Unexpected 'b'.");
         assert_eq!(parse_condition("(a()").unwrap_err(), "Missing closing parenthesis.");
+    }
+
+    #[test]
+    fn state_tests_in_conditions() {
+        let c = parse_condition("!in(Busy) && in()").unwrap().unwrap();
+        assert_eq!(
+            c,
+            Condition::And {
+                args: vec![
+                    Condition::Not { arg: Box::new(Condition::In { state: "Busy".into(), state_index: None }) },
+                    Condition::Call { name: "in".into() }
+                ]
+            }
+        );
+        assert_eq!(state_tests("in(A) || (b() && !in(C))"), vec!["A", "C"]);
+        assert_eq!(parse_condition("in(A B)").unwrap_err(), "A state test names one state: write in(A).");
+        assert!(check_actions("in(A)").is_err());
     }
 
     #[test]

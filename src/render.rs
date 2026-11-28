@@ -505,6 +505,10 @@ fn print_condition(c: &Value, lang: &LanguageConfig, overrides: &Kwargs) -> Resu
         let op = op.as_str().ok_or_else(|| op_error(format!("guard: {x} is not a condition")))?;
         let s = match op {
             "call" => format!("{}{}{}", g.prefix, escape_id(&text(&x.get_attr("name")?), lang), g.suffix),
+            "in" => g
+                .in_
+                .replace("{index}", &text(&x.get_attr("stateIndex")?))
+                .replace("{state}", &text(&x.get_attr("state")?)),
             "not" => format!("{}{}", g.not, print(&x.get_attr("arg")?, 3, g, lang)?),
             "and" | "or" => {
                 let sep = if op == "and" { &g.and } else { &g.or };

@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use crate::codemodel::{CodeModel, Options, to_code_model};
 use crate::format::{is_old_format, read_machine};
-use crate::model::{FsmModel, SubmachineInfo, VertexType, machine_connection_points};
+use crate::model::{FsmModel, SubmachineInfo, VertexType, has_default_entry, machine_connection_points};
 use crate::paths::{display, resolve};
 use crate::render::{Renderer, TemplateError};
 use crate::validation::{Severity, validate};
@@ -148,8 +148,12 @@ impl Loader<'_> {
             };
             if found {
                 let sub = &self.loaded[&sub_path].as_ref().unwrap().model;
-                let found =
-                    SubmachineInfo { found: true, name: sub.name.clone(), points: machine_connection_points(sub) };
+                let found = SubmachineInfo {
+                    found: true,
+                    name: sub.name.clone(),
+                    points: machine_connection_points(sub),
+                    default_entry: has_default_entry(sub),
+                };
                 self.loaded.get_mut(path).unwrap().as_mut().unwrap().refs.push((href.clone(), sub_path));
                 info.insert(href, found);
             } else {

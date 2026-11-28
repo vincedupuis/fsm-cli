@@ -273,6 +273,8 @@ pub struct CodeSubmachine {
     pub exit_points: Vec<String>,
     /// It uses time events, itself or through its own submachines.
     pub timers: bool,
+    /// It can be started by default (`features.defaultEntry`); else only through its entry points.
+    pub default_entry: bool,
     /// Submachine states using it.
     pub states: Vec<Ref>,
 }
@@ -293,6 +295,9 @@ pub struct CodeExitPoint {
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeFeatures {
+    /// The machine can be started by default: every top-level region has an initial pseudostate. Without it, it is
+    /// entered through its entry points only.
+    pub default_entry: bool,
     pub timers: bool,
     /// A submachine uses time events, itself or through its own submachines.
     pub submachine_timers: bool,
@@ -760,8 +765,12 @@ impl<'a> Builder<'a> {
         self.features.submachine_timers = subs.iter().any(|(_, s)| uses_timers(s));
         self.features.any_timers = self.features.timers || self.features.submachine_timers;
         self.features.activities = !self.activities.list.is_empty();
-        self.features.constraints =
-            self.features.invariants || self.features.preconditions || self.features.postconditions;
+        self.features.default_entry = crate::model::has_default_entry(self.model);
+        // A protocol machine reports the events it can't take.
+        self.features.constraints = self.features.invariants
+            || self.features.preconditions
+            || self.features.postconditions
+            || self.model.kind == MachineKind::Protocol;
 
         let submachines = subs
             .iter()
@@ -772,6 +781,7 @@ impl<'a> Builder<'a> {
                 entry_points: sub.entry_points.iter().map(|p| p.name.clone()).collect(),
                 exit_points: sub.exit_points.iter().map(|p| p.name.clone()).collect(),
                 timers: uses_timers(sub),
+                default_entry: sub.features.default_entry,
                 states: states
                     .iter()
                     .filter(|s| s.submachine.as_ref().is_some_and(|x| &x.href == href))
@@ -986,16 +996,42 @@ impl<'a> Builder<'a> {
 
     /// A constraint of the element `id`.
     fn condition(&mut self, text: &str, what: &str, id: &str) -> Result<Option<Condition>, CodeGenError> {
-        let c = expr::parse_condition(text).map_err(|e| CodeGenError::new(id, format!("{what}: {e}")))?;
-        fn visit(c: &Condition, set: &mut OrderedSet) {
+        let mut c = expr::parse_condition(text).map_err(|e| CodeGenError::new(id, format!("{what}: {e}")))?;
+        // Calls are the conditions to implement; a state test gets the index of its state.
+        fn visit(
+            b: &Builder,
+            c: &mut Condition,
+            set: &mut OrderedSet,
+            what: &str,
+            id: &str,
+        ) -> Result<(), CodeGenError> {
             match c {
                 Condition::Call { name } => set.add(name),
-                Condition::Not { arg } => visit(arg, set),
-                Condition::And { args } | Condition::Or { args } => args.iter().for_each(|a| visit(a, set)),
+                Condition::In { state, state_index } => {
+                    let v = b
+                        .model
+                        .vertices
+                        .iter()
+                        .position(|v| v.name == *state && matches!(v.vtype, VertexType::State | VertexType::Final))
+                        .ok_or_else(|| {
+                            CodeGenError::new(id, format!("{what}: '{state}' is not a state of the machine."))
+                        })?;
+                    *state_index = Some(b.state_ref(v)?.index);
+                }
+                Condition::Not { arg } => visit(b, arg, set, what, id)?,
+                Condition::And { args } | Condition::Or { args } => {
+                    for a in args {
+                        visit(b, a, set, what, id)?;
+                    }
+                }
             }
+            Ok(())
         }
-        if let Some(c) = &c {
-            visit(c, &mut self.conditions);
+        if let Some(c) = &mut c {
+            let mut set = std::mem::take(&mut self.conditions);
+            let r = visit(self, c, &mut set, what, id);
+            self.conditions = set;
+            r?;
         }
         Ok(c)
     }
@@ -1187,17 +1223,8 @@ impl<'a> Builder<'a> {
         if t.kind == TransitionKind::Local
             && self.is_state(pos)
             && !pv.regions.is_empty()
-            && (target == pos || self.ix.is_inside(target, &pv.id))
+            && self.ix.is_inside(target, &pv.id)
         {
-            if target == pos {
-                let mut steps =
-                    pv.regions.iter().map(|r| self.exit_region_step(&r.id)).collect::<Result<Vec<_>, _>>()?;
-                steps.extend(self.effect(t)?);
-                for r in &pv.regions {
-                    steps.push(self.enter_region_step(&r.id)?);
-                }
-                return Ok(one(steps));
-            }
             let chain = self.chain(target)?;
             let region = &pv
                 .regions
@@ -1584,6 +1611,124 @@ impl<'a> Builder<'a> {
             .collect())
     }
 
+    /// The region of `owner` (None: a top-level region) holding `v`, itself or through the states around it.
+    fn region_in(&self, v: usize, owner: Option<usize>) -> Option<&'a str> {
+        std::iter::once(v).chain(self.ix.ancestors(v)).find_map(|w| {
+            let parent = self.ix.v(w).parent.as_str();
+            (self.ix.region_owner(parent) == Some(owner)).then_some(parent)
+        })
+    }
+
+    /// An exit point reached from several orthogonal regions of its state (of the machine, for the machine's own) acts
+    /// as a join (UML 14.2.3.7): its owner is left once every source has completed.
+    fn exit_point_joins(&self, ep: usize) -> bool {
+        let ev = self.ix.v(ep);
+        if ev.vtype != VertexType::ExitPoint {
+            return false;
+        }
+        let owner = self.ix.vertex(&ev.parent);
+        let regions: HashSet<&str> = self
+            .ix
+            .incoming(&ev.id)
+            .iter()
+            .filter_map(|t| self.ix.vertex(&t.source))
+            .filter_map(|s| self.region_in(s, owner))
+            .collect();
+        regions.len() > 1
+    }
+
+    /// An exit point acting as a join: from the completion of any source once all have completed, the owner is left
+    /// (the machine, for its own exit point), the incoming transitions' actions run in order, then the point's own
+    /// transitions are taken like a junction's.
+    fn exit_point_join(&mut self, ep: usize) -> Result<Vec<CodeCandidate>, CodeGenError> {
+        self.features.joins = true;
+        let ev = self.ix.v(ep);
+        let incoming = self.ix.incoming(&ev.id);
+        let mut sources = Vec::new();
+        for t in &incoming {
+            let s = self.vertex(&t.source)?;
+            if self.is_state(s) {
+                sources.push(s);
+            }
+        }
+        let requires = sources.iter().map(|&s| self.state_ref(s)).collect::<Result<Vec<_>, _>>()?;
+        let names: Vec<&str> = requires.iter().map(|r| r.name.as_str()).collect();
+        let label = format!("join {} -> {}", names.join(" + "), self.label(Some(ep)));
+        let key = format!("join|{}", ev.id);
+        let fireables = match self.fire_cache.get(&key) {
+            Some(cached) => cached.clone(),
+            None => {
+                let owner = self.ix.vertex(&ev.parent);
+                let mut steps = match owner {
+                    Some(o) => vec![self.exit_step(o)?],
+                    None => {
+                        let mut exits = Vec::new();
+                        for r in self.top_region_ids.clone() {
+                            exits.push(self.exit_region_step(r)?);
+                        }
+                        exits
+                    }
+                };
+                for t in &incoming {
+                    steps.extend(self.effect(t)?);
+                }
+                let alts = match owner {
+                    Some(_) => {
+                        let outs: Vec<&'a Transition> = self
+                            .ix
+                            .outgoing(&ev.id)
+                            .into_iter()
+                            .filter(|t| t.kind != TransitionKind::Internal)
+                            .collect();
+                        seq(one(steps), self.branches(ep, &outs)?)
+                    }
+                    None => {
+                        steps.push(Step::ExitMachine { point: ident(&ev.name, "exit") });
+                        one(steps)
+                    }
+                };
+                let source = requires
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| CodeGenError::new(&ev.id, format!("{label} has no source state.")))?;
+                let base = ident(&format!("join_{}", names.join("_")), "x");
+                let count = alts.len();
+                let mut list = Vec::new();
+                for (i, a) in alts.into_iter().enumerate() {
+                    let name =
+                        self.transition_names.take(&if count > 1 { format!("{base}_{}", i + 1) } else { base.clone() });
+                    let via = join_via(&[self.via_of(ep)], &a.via);
+                    let index = self.transitions.len();
+                    self.transitions.push(CodeTransition {
+                        index,
+                        id: ev.id.clone(),
+                        name,
+                        label: label.clone(),
+                        via,
+                        kind: "join",
+                        source_index: source.index,
+                        source: source.clone(),
+                        steps: a.steps,
+                    });
+                    list.push((index, a.guard));
+                }
+                self.fire_cache.insert(key, list.clone());
+                list
+            }
+        };
+        Ok(fireables
+            .into_iter()
+            .map(|(tr, guard)| CodeCandidate {
+                transition: self.transitions[tr].name.clone(),
+                transition_index: tr,
+                guard,
+                precondition: None,
+                requires: requires.clone(),
+                label: label.clone(),
+            })
+            .collect())
+    }
+
     /// A join: fires from the completion of any source once all sources have completed.
     fn join(&mut self, j: usize) -> Result<Vec<CodeCandidate>, CodeGenError> {
         self.features.joins = true;
@@ -1751,6 +1896,8 @@ impl<'a> Builder<'a> {
             if t.triggers.is_empty() {
                 if self.ix.v(target).vtype == VertexType::Join {
                     completion.extend(self.join(target)?);
+                } else if self.exit_point_joins(target) {
+                    completion.extend(self.exit_point_join(target)?);
                 } else {
                     completion.extend(self.candidates(t, v, Vec::new(), None)?);
                 }

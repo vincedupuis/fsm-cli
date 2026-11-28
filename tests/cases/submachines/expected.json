@@ -60,7 +60,7 @@
       "id": "Run.quit",
       "line": 76,
       "message": "Entry reference 'quit' has no incoming transition.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Run.",
@@ -72,19 +72,19 @@
       "id": "Run.",
       "line": 80,
       "message": "Exit reference connection point reference has no outgoing transition.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Run.done~2",
       "line": 84,
       "message": "Exit reference 'done' has no outgoing transition.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Run.done~2",
       "line": 84,
       "message": "'Run' already references 'done'.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Gone",
@@ -114,27 +114,49 @@
       "id": "Gone",
       "line": 90,
       "message": "State 'Gone' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Broken",
       "line": 95,
       "message": "State 'Broken' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Both",
       "line": 100,
       "message": "State 'Both' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "id": "Z",
       "line": 108,
       "message": "State 'Z' can never be entered.",
-      "severity": "warning"
+      "severity": "error"
+    }
+  ],
+  "Points.fsm": [
+    {
+      "id": "B",
+      "line": 30,
+      "message": "State 'B' can never be entered.",
+      "severity": "error"
+    },
+    {
+      "id": "",
+      "line": 1,
+      "message": "The top-level region has no initial pseudostate.",
+      "severity": "error"
     }
   ],
   "Self.fsm": [],
+  "Starts.fsm": [
+    {
+      "id": "P",
+      "line": 25,
+      "message": "'P' is entered by default, but its submachine 'Points' has no initial pseudostate: enter it through an entry point.",
+      "severity": "error"
+    }
+  ],
   "Sub.fsm": []
 }

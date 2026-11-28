@@ -20,6 +20,7 @@
 lang: cpp
 guard:
   prefix: "c.actions."
+  in: "c.isActive({index})"
 options:
   # Methods of the generated class and of the actions interface, which events and behaviors cannot be named after.
   classMethods: [startMachine, startMachineAt, resumeMachine, stopMachine, setListener, activityDone, isIn, activeStates, isFinished, isTerminated, offer]
@@ -353,7 +354,7 @@ struct Runtime;
 /// {{ machine.displayName }}{{ " (protocol state machine)" if machine.protocol }}, run by Boost.SML.
 ///
 /// Events are processed one at a time, each to completion; events sent while one is processed are queued.
-/// Call startMachine() once, then send events.
+/// Call {{ "startMachine()" if features.defaultEntry else "startMachineAt()" }} once, then send events.
 class {{ machine.name }} : public {{ machine.name }}Events {
 public:
     /// What the machine tells whoever runs it.
@@ -391,8 +392,10 @@ public:
 
     /// Tells `listener` (or nobody, with nullptr) when the machine finishes{{ " or leaves through an exit point" if exitPoints }}.
     void setListener(Listener* listener);
+{% if features.defaultEntry %}
     /// Enters the machine through its initial pseudostates.
     void startMachine();
+{% endif %}
 {% if entryPoints %}
     /// Enters the machine through one of its entry points.
     void startMachineAt({{ machine.name }}EntryPoint point);
@@ -728,7 +731,9 @@ struct Context {
 {% if sub.entryPoints %}
             if (how >= 2) sub_{{ s.name }}.startMachineAt(static_cast<{{ sub.name }}EntryPoint>(how - 2));
             else if (how == 1) sub_{{ s.name }}.resumeMachine();
+{% if sub.defaultEntry %}
             else sub_{{ s.name }}.startMachine();
+{% endif %}
 {% else %}
             if (how == 1) sub_{{ s.name }}.resumeMachine();
             else sub_{{ s.name }}.startMachine();
@@ -921,7 +926,7 @@ struct Runtime final : Context {
     }
 
     /// One run-to-completion step for `signal`: Boost.SML selects and fires the transitions.
-    int process(int signal) {
+    int process(int signal{{ ", bool offered = false" if machine.protocol }}) {
 {% if signals %}
         trace("event", SIGNAL_NAMES[signal], SIGNAL_NAMES[signal]);
 {% endif %}
@@ -943,6 +948,11 @@ struct Runtime final : Context {
         else if (result == DEFERRED) deferred.push_back(signal);
 {% if features.preconditions %}
         else if (preconditionFailed) actions.onConstraintViolation({{ machine.name }}Constraint::precondition, preconditionFailed);
+{% endif %}
+{% if machine.protocol %}
+        // An event that no transition of the current states takes: a protocol violation (offered by a parent machine,
+        // the parent may still take it).
+        else if (result == NONE && !offered && signal < EVENT_COUNT) actions.onConstraintViolation({{ machine.name }}Constraint::precondition, SIGNAL_NAMES[signal]);
 {% endif %}
         checkInvariants();
         return result;
@@ -1014,7 +1024,7 @@ struct Runtime final : Context {
         int result;
         {
             Running guard(running);
-            result = process(signal);
+            result = process(signal{{ ", true" if machine.protocol }});
         }
         run();
         return result != NONE;
@@ -1036,10 +1046,12 @@ using {{ machine.name }}_sml::Runtime;
 
 void {{ machine.name }}::setListener(Listener* listener) { runtime_->listener = listener; }
 
+{% if features.defaultEntry %}
 void {{ machine.name }}::startMachine() {
     runtime_->begin();
     runtime_->enterMachine();
 }
+{% endif %}
 {% if entryPoints %}
 
 void {{ machine.name }}::startMachineAt({{ machine.name }}EntryPoint point) {

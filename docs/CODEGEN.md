@@ -43,7 +43,7 @@ order.activeStates;      // ['Payment']
 - **Constraints:** invariants, preconditions and postconditions call `onConstraintViolation(kind, element)`.
 - `terminate` calls `onTerminate()` and stops the machine.
 - **Tracing:** pass `onTrace` in the options to know what the machine does, for example to write a log (see [Tracing](#tracing)).
-- **Other methods:** `startAt(point)` enters through one of the machine's entry points. `stop()` leaves every state. `resume()` re-enters what was active when it was stopped.
+- **Other methods:** `startAt(point)` enters through one of the machine's entry points (a machine without an initial pseudostate has no `start()`: it is entered this way only). `stop()` leaves every state. `resume()` re-enters what was active when it was stopped.
 - Identifiers that are TypeScript keywords get a `_` suffix (`delete()` → `delete_()`).
 
 The generated code has no dependencies, is strict-mode clean, and runs in browsers and Node.js.
@@ -79,7 +79,7 @@ order.activeStates();                  // {OrderState::Payment}
 - **Do activities** become `startBlinkLed()` and `stopBlinkLed()`; call `activityDone(MediaPlayerActivity::blinkLed)` when one ends by itself.
 - **Timers** go through `FsmTimers`, which you implement once and pass to the constructor of every machine with time events, `Order(actions, timers)`. A machine passes it on to its submachines. `startTimer(delay, fire)` must call `fire()` once after `delay` unless `cancelTimer()` comes first, on the thread that sends the events. Delays are rounded up to whole milliseconds. A late `fire()` does nothing.
 - **Submachines:** each machine gets its own class, run by its submachine states. `OrderActions::submachinePayment()` gives the actions of the `Payment` submachine state. Generate `Payment.fsm` too.
-- **Other methods:** `startMachineAt(point)` enters through an entry point, `stopMachine()` leaves every state, `resumeMachine()` re-enters what was active when it was stopped. `setListener()` is told when the machine finishes or leaves through an exit point, and through `Listener::onTrace()` what the machine does (see [Tracing](#tracing)). They are named so that they don't clash with events such as `start` or `stop`.
+- **Other methods:** `startMachineAt(point)` enters through an entry point (a machine without an initial pseudostate has no `startMachine()`: it is entered this way only), `stopMachine()` leaves every state, `resumeMachine()` re-enters what was active when it was stopped. `setListener()` is told when the machine finishes or leaves through an exit point, and through `Listener::onTrace()` what the machine does (see [Tracing](#tracing)). They are named so that they don't clash with events such as `start` or `stop`.
 - Identifiers that are C++ keywords get a `_` suffix.
 
 Boost.SML runs the transition tables: one per composite state, with a `*` initial state per region, and the machine's own. The runtime around them gives the machine UML's semantics where Boost.SML's differ: the event queue, completion events (processed before other events), deferred events (dispatched again after the next state change, after the completion events), timers, constraints and submachines. Boost.SML has no counterpart for some UML features; the template works around them, keeping the order of exits, transition actions and entries, and prints a warning for each:
@@ -91,7 +91,7 @@ Boost.SML runs the transition tables: one per composite state, with a `*` initia
 | Local transition | A transition of each substate of the composite state, which leaves the active substate but not the composite state. |
 | Orthogonal regions reacting to the same event | Boost.SML fires the transitions region after region, so a later region's guards see the earlier regions' actions (UML selects them all first). This is the one difference in behavior, hence the warning. |
 
-What it cannot express stops the generation with an error, and nothing is written: a transition between top-level regions, a local transition of a state with several regions, and names that would not compile (an event named like a method of the generated class, a function used both as a behavior and as a condition).
+What it cannot express stops the generation with an error, and nothing is written: a local transition of a state with several regions, and names that would not compile (an event named like a method of the generated class, a function used both as a behavior and as a condition).
 
 ## Tracing
 
@@ -138,11 +138,11 @@ Top level:
 | `signals` | Events then timers, numbered from 0: `name`, `index`, `kind` (`event`/`timer`) |
 | `actions`, `conditions`, `activities` | Names of the functions called by behaviors, by conditions, and by do activities. |
 | `transitions` | Everything that can fire: `index`, `id` (of the UML transition, or of the join), `name`, `label`, `kind` (`external`/`internal`/`local`/`join`/`exitPoint`), `source`/`sourceIndex`, `steps`, `via` (the pseudostates it goes through, in order: `kind`, `name`, `id`; those of its own way through junctions, and those of every branch of its choices) |
-| `submachines` | Distinct machines used by submachine states: `name`, `href` (the path of its file, as the submachine state writes it), `events`, `entryPoints` and `exitPoints` (names), `timers` (it uses time events, itself or in its submachines), `states` |
+| `submachines` | Distinct machines used by submachine states: `name`, `href` (the path of its file, as the submachine state writes it), `events`, `entryPoints` and `exitPoints` (names), `defaultEntry` (it can be started by default), `timers` (it uses time events, itself or in its submachines), `states` |
 | `entryPoints`, `exitPoints` | The machine's own connection points: `name`, `id`, and `steps` for entry points. |
 | `start` | Steps of the default entry. |
 | `invariants` | The states that have an invariant. |
-| `features` | Booleans: `timers`, `submachineTimers`, `anyTimers` (one of the two), `activities`, `history`, `deferral`, `choices`, `joins`, `terminate`, `submachines`, `entryPoints`, `exitPoints`, `invariants`, `preconditions`, `postconditions`, `constraints`, so a template can leave out unused runtime parts. |
+| `features` | Booleans: `defaultEntry` (every top-level region has an initial pseudostate; without it, the machine is entered through its entry points only, and the bundled templates write no `start()`/`startMachine()`), `timers`, `submachineTimers`, `anyTimers` (one of the two), `activities`, `history`, `deferral`, `choices`, `joins`, `terminate`, `submachines`, `entryPoints`, `exitPoints`, `invariants`, `preconditions`, `postconditions`, `constraints`, so a template can leave out unused runtime parts. |
 | `tables` | The machine as nested transition tables ([below](#transition-tables)). |
 
 References to other elements are `{ name, index }` objects, or a `…Index` number.
@@ -163,7 +163,7 @@ References to other elements are `{ name, index }` objects, or a `…Index` numb
 
 A **candidate** has `transition`/`transitionIndex`, `guard` (condition or null), `precondition` (protocol machines), `requires` (joins: states that must all be active and completed) and `label`. Candidates are in priority order: take the first enabled one.
 
-A **condition** is `{ op: "call", name }`, `{ op: "not", arg }`, or `{ op: "and" | "or", args }`.
+A **condition** is `{ op: "call", name }`, `{ op: "in", state, stateIndex }` (a state test: true while that state is active), `{ op: "not", arg }`, or `{ op: "and" | "or", args }`.
 
 ### Steps
 
@@ -217,13 +217,14 @@ The code model and the bundled templates implement UML run-to-completion semanti
 - **Events** are queued and processed one at a time. Each run-to-completion step first selects the enabled transitions, then fires them.
 - **Priority:** the innermost states get the event first. A state's own transitions apply only when none of its substates used the event. Orthogonal regions each fire their own transition in the same step. When two selected transitions conflict (the first one fired has left the source of the other), only the first fires.
 - **Completion events** (states entered, do activities ended, all regions final, submachine finished) are processed before the next event. A completion event whose transitions are all disabled is lost.
+- **State tests** `in(S)` in a guard, an invariant or a pre/postcondition hold while state S is active when the condition is evaluated.
 - **Any-receive events:** a transition triggered by `all` takes every named event that the other transitions of its state don't name, and that the state doesn't defer. Time events and completion events aren't received messages: `all` doesn't take them.
 - **Deferred events** are kept while a deferring state is active and there is no transition for them. They are dispatched again after the next state change. A deferring state has priority over transitions of the states around it.
 - **Order of actions:** exits from the innermost state outwards, then the transition actions, then entries from the outside in. Other orthogonal regions get their default entry.
-- **Choices** are evaluated when reached, after the exits and actions before them. When no branch is enabled, the generated code throws.
+- **Choices** are evaluated when reached, after the exits and actions before them. A choice always has an `[else]` branch (validation requires it); the generated code still throws if no branch is enabled.
 - **Junctions** are static: each way through a chain of junctions becomes its own transition whose guard combines all the guards (`else` is the negation of its siblings). A transition fires only when a whole path is enabled.
 - **Forks** enter all their targets, and regions without a target get their default entry. **Joins** fire when all their source states are active and completed (join incoming transitions have no triggers).
 - **History:** shallow history restores the last active substate with default entry below it. Deep history restores all levels, including submachines. A region last left in a final state restores by default.
-- **Entry points** of a composite state: the state is entered, then all the entry point's transitions, which have no guards. **Exit points:** the state is exited, then the exit point's transitions are taken like a junction's.
+- **Entry points** of a composite state: the state is entered, then all the entry point's transitions, which have no guards. **Exit points:** the state is exited, then the exit point's transitions are taken like a junction's. An exit point reached from several orthogonal regions acts as a join: the state is left once all the sources have completed, then the actions of the transitions entering the point run in order.
 - **Submachines** run as separate objects. The parent offers them each event before its own transitions (they have priority like substates), starts them by default or through an entry point, stops them when the submachine state is exited, and follows their exit points and completion.
-- **Protocol state machines:** preconditions select transitions. An event that finds no transition because a precondition is false is a protocol violation. On the branches of choices and junctions, the precondition selects the branch, as a guard does (a branch's `guard` in the code model). Postconditions are checked after the transition (a branch's, after the rest of its way), and invariants after every step.
+- **Protocol state machines:** preconditions select transitions. An event that finds no transition, because a precondition is false or because no transition of the current states takes it, is a protocol violation, reported with the transition's label or the event's name (not when a parent machine offers the event to it as a submachine: the parent may still take it). On the branches of choices and junctions, the precondition selects the branch, as a guard does (a branch's `guard` in the code model). Postconditions are checked after the transition (a branch's, after the rest of its way), and invariants after every step.

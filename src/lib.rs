@@ -191,7 +191,7 @@ mod tests {
   "type": "behavioral",
   "initial": { "target": "S" },
   "elements": [
-    { "name": "S", "type": "state" },
+    { "name": "S", "type": "state", "transitions": [{ "type": "external", "trigger": "go", "target": "X" }] },
     { "name": "X", "type": "state" }
   ]
 }
@@ -228,11 +228,20 @@ mod tests {
         assert_eq!(r["files"][0]["content"], "Main: 1\n");
         assert_eq!(r["files"][0]["source"], "Main.fsm");
         assert_eq!(r["files"][0]["modelHash"].as_str().unwrap().len(), 16);
+        assert_eq!(r["issues"], json!([]));
+    }
+
+    #[test]
+    fn problems_of_a_submachine_at_their_lines() {
         // The submachine's state that can never be entered, at its line in its file, displayed relative to cwd.
+        let sub = SUB.replace(r#", "transitions": [{ "type": "external", "trigger": "go", "target": "X" }]"#, "");
+        let r = call(request(json!({ "/w/Main.fsm": MACHINE, "sub/Sub.fsm": sub }), "t.jinja"));
+        assert_eq!(r["exitCode"], 1, "{r}");
+        assert_eq!(r["files"], json!([]));
         assert_eq!(r["issues"][0]["file"], "sub/Sub.fsm");
         assert_eq!(r["issues"][0]["line"], 8);
         assert_eq!(r["issues"][0]["id"], "X");
-        assert_eq!(r["issues"][0]["severity"], "warning");
+        assert_eq!(r["issues"][0]["severity"], "error");
     }
 
     #[test]
@@ -249,7 +258,8 @@ mod tests {
   "initial": { "target": "S" }, "elements": [{ "name": "S", "type": "state" }] }"#;
         let r = call(request(json!({ "/w/Main.fsm": main, "/w/Sub.fsm": sub }), "t.jinja"));
         assert_eq!(r["exitCode"], 1, "{r}");
-        let messages: Vec<&str> = r["issues"].as_array().unwrap().iter().map(|i| i["message"].as_str().unwrap()).collect();
+        let messages: Vec<&str> =
+            r["issues"].as_array().unwrap().iter().map(|i| i["message"].as_str().unwrap()).collect();
         assert!(messages.contains(&"A point cannot be named 'initial'."), "{r}");
         assert!(r["issues"].as_array().unwrap().iter().any(|i| i["id"] == "Sub.initial~2"), "{r}");
     }

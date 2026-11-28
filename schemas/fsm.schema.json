@@ -231,7 +231,7 @@
             },
             "invariant": {
               "type": "string",
-              "description": "State invariant: calls combined with !, && and ||."
+              "description": "State invariant: calls and state tests in(<state>) combined with !, && and ||."
             },
             "transitions": {
               "type": "array",
@@ -524,7 +524,7 @@
         },
         "guard": {
           "type": "string",
-          "description": "Guard: calls combined with !, && and ||, or else on choice and junction branches."
+          "description": "Guard: calls and state tests in(<state>) combined with !, && and ||, or else on choice and junction branches."
         },
         "action": {
           "type": "string",

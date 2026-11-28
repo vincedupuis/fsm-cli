@@ -17,6 +17,9 @@ pub struct GuardSyntax {
     /// Printed for a missing condition (unguarded or `else` branch).
     #[serde(rename = "true")]
     pub true_: String,
+    /// Printed for a state test `in(S)`: `{index}` is replaced by the state's index in `states`, `{state}` by its name.
+    #[serde(rename = "in")]
+    pub in_: String,
 }
 
 impl GuardSyntax {
@@ -28,6 +31,7 @@ impl GuardSyntax {
             and: and.into(),
             or: or.into(),
             true_: true_.into(),
+            in_: "isIn({index})".into(),
         }
     }
 
@@ -44,6 +48,7 @@ impl GuardSyntax {
             "and" => &mut self.and,
             "or" => &mut self.or,
             "true" => &mut self.true_,
+            "in" => &mut self.in_,
             _ => return None,
         })
     }
@@ -262,7 +267,13 @@ fn preset(name: &str) -> Option<LanguageConfig> {
         "cpp" => (words(&[C_KEYWORDS, CPP_KEYWORDS]), GuardSyntax::c()),
         "ts" => (words(&[TS_KEYWORDS]), GuardSyntax::c()),
         "java" => (words(&[JAVA_KEYWORDS]), GuardSyntax::c()),
-        "python" => (words(&[PYTHON_KEYWORDS]), GuardSyntax::new("self.", "()", "not ", " and ", " or ", "True")),
+        "python" => (
+            words(&[PYTHON_KEYWORDS]),
+            GuardSyntax {
+                in_: "self.is_in({index})".into(),
+                ..GuardSyntax::new("self.", "()", "not ", " and ", " or ", "True")
+            },
+        ),
         _ => return None,
     };
     Some(LanguageConfig { name: name.to_string(), keywords, escape: "_".to_string(), guard })

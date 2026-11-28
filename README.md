@@ -109,7 +109,7 @@ Fields are listed in the order they are written. `version`, `name` and `type` ar
 
 - `trigger`: the triggers, separated by `, ` (`"play, resume"`, `"after(5m)"`): event names; `after(<number><ms|s|m|h>)`, a time event (`after(0s)` is taken at once); or `all`, any event the state's other transitions don't name. One object per arrow. `defer`, the deferred events, is written the same way, with event names only.
 - `entry`, `exit`, `do`, `action`: argument-less calls separated by `; ` (`"start(); log()"`).
-- `guard`, `invariant`, `precondition`, `postcondition`: calls combined with `!`, `&&`, `||` and parentheses; `else` on the branches of a choice or junction (their `guard`, or in a protocol machine their `precondition`).
+- `guard`, `invariant`, `precondition`, `postcondition`: calls and state tests combined with `!`, `&&`, `||` and parentheses; `else` on the branches of a choice or junction (their `guard`, or in a protocol machine their `precondition`). A state test `in(<state>)` names a state of the machine and holds while that state is active (`"in(Busy) && !isLate()"`).
 - `submachine`: the path of the other `.fsm` file, relative to this one (one machine per file).
 - `stereotype`, `context`: a name. `documentation` and a comment's `text`: free text.
 
@@ -346,7 +346,7 @@ A template is a Jinja file, optionally starting with front matter between `---` 
 ---
 lang: cpp                   # preset for the guard and id filters: c, cpp, ts, java, python
 guard:
-  prefix: "actions_."       # overrides the preset: prefix, suffix, not, and, or, true
+  prefix: "actions_."       # overrides the preset: prefix, suffix, not, and, or, true, in
 keywords: [signals, slots]  # more reserved words for the id filter
 options:                    # free values, available as {{ options.namespace }}
   namespace: fsm
@@ -383,7 +383,7 @@ Besides Jinja's own (`join`, `map`, `selectattr`, `length`, `first`, `indent`, `
 | | Example | Result |
 | --- | --- | --- |
 | `file` | `{% filter file("a/B.h") %}…{% endfilter %}` | Writes the block's output to a file. |
-| `guard` | `{{ t.guard \| guard }}`, `{{ c \| guard(prefix="self.") }}` | Condition tree in the template's language; `true` (the preset's) when there is none. |
+| `guard` | `{{ t.guard \| guard }}`, `{{ c \| guard(prefix="self.") }}` | Condition tree in the template's language; `true` (the preset's) when there is none. A state test prints `in` with `{index}` (the state's index in `states`) and `{state}` (its name) replaced: `isIn({index})` by default (`self.is_in({index})` for `python`). |
 | `id` | `{{ "delete" \| id }}` | Escapes reserved words: `delete_`. |
 | `pascal`, `camel`, `snake`, `upper_snake` | `{{ "blinkLed" \| upper_snake }}` | `BLINK_LED`, also escaping reserved words. |
 | `quote` | `{{ label \| quote }}` | A double-quoted string literal (C, C++, Java, TypeScript, Python). |
